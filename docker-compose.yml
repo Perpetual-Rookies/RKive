@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rkive
+      POSTGRES_PASSWORD: rkive
+      POSTGRES_DB: rkive
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rkive -d rkive"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    volumes:
+      - qdrant_data:/qdrant/storage
+    expose:
+      - "6333"
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://rkive:rkive@postgres:5432/rkive
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-org-default}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
+      PORT: "3001"
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - upload_data:/data/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  qdrant_data:
+  upload_data:

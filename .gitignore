@@ -1,0 +1,15 @@
+node_modules
+dist
+.env
+*.log
+data
+.DS_Store
+frontend/node_modules
+frontend/dist
+backend/node_modules
+backend/dist
+scripts/.venv
+__pycache__
+*.pyc
+*.tsbuildinfo
+.cursor

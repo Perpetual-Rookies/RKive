@@ -1,0 +1,24 @@
+FROM ghcr.io/astral-sh/uv:0.6.3 AS uvbin
+
+FROM node:22-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=uvbin /uv /usr/local/bin/uv
+
+WORKDIR /app/scripts
+COPY scripts/pyproject.toml scripts/uv.lock scripts/README.md ./
+COPY scripts/rkive_ingest ./rkive_ingest
+RUN uv sync --frozen --no-dev
+
+WORKDIR /app/backend
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+COPY backend/ ./
+RUN npm run build
+
+ENV SCRIPTS_ROOT=/app/scripts
+ENV NODE_ENV=production
+EXPOSE 3001
+CMD ["node", "dist/index.js"]
