@@ -1,0 +1,53 @@
+"""Repository for documents and ingestion jobs (raw SQL via psycopg3)."""
+
+from rkive.db import get_conn
+
+
+async def insert_document(filename: str, storage_path: str, checksum: str) -> str:
+    """Insert a new document row and return its UUID."""
+    async with get_conn() as conn:
+        row = await conn.fetchone(
+            """
+            INSERT INTO documents (id, filename, storage_path, checksum)
+            VALUES (gen_random_uuid(), %s, %s, %s)
+            RETURNING id
+            """,
+            (filename, storage_path, checksum),
+        )
+    return str(row["id"])
+
+
+async def insert_ingestion_job(document_id: str) -> str:
+    """Create a new ingestion job in 'running' state and return its UUID."""
+    async with get_conn() as conn:
+        row = await conn.fetchone(
+            """
+            INSERT INTO ingestion_jobs (id, document_id, status, started_at)
+            VALUES (gen_random_uuid(), %s, 'running', now())
+            RETURNING id
+            """,
+            (document_id,),
+        )
+    return str(row["id"])
+
+
+async def update_job_succeeded(job_id: str) -> None:
+    """Mark an ingestion job as succeeded."""
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE ingestion_jobs SET status = 'succeeded', finished_at = now() WHERE id = %s",
+            (job_id,),
+        )
+
+
+async def update_job_failed(job_id: str, error: str) -> None:
+    """Mark an ingestion job as failed with an error message."""
+    async with get_conn() as conn:
+        await conn.execute(
+            """
+            UPDATE ingestion_jobs
+            SET status = 'failed', error_message = %s, finished_at = now()
+            WHERE id = %s
+            """,
+            (error, job_id),
+        )

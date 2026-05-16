@@ -1,0 +1,23 @@
+[project]
+name = "rkive-api"
+version = "0.1.0"
+description = "RKive API – FastAPI backend with WebSocket streaming"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  "asyncpg>=0.30.0",
+  "psycopg[binary]>=3.2.0",
+  "httpx>=0.27.0",
+  "qdrant-client>=1.12.0",
+  "python-dotenv>=1.0.0",
+  "websockets>=13.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rkive"]
