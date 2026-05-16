@@ -12,7 +12,7 @@ import uuid
 
 from qdrant_client.http import models as qm
 
-from rkive.services.ollama import embed
+from rkive.services.llm import embed
 from rkive.services.qdrant import ensure_collection, upsert_points
 
 

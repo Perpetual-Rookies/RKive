@@ -9,7 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from rkive.config import get_embedding_dim
 from rkive.models.chat import Citation
 from rkive.repositories.conversations import create_conversation, insert_message
-from rkive.services.ollama import chat_stream, embed
+from rkive.services.llm import chat_stream, embed
 from rkive.services.qdrant import ensure_collection, search_similar
 
 log = logging.getLogger("rkive.chat")

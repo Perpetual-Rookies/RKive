@@ -44,12 +44,13 @@ class SearchHit:
 
 async def search_similar(vector: list[float], limit: int = 6) -> list[SearchHit]:
     """Return the *limit* nearest neighbours for *vector*."""
-    results = await get_client().search(
+    response = await get_client().query_points(
         collection_name=get_qdrant_collection(),
-        query_vector=vector,
+        query=vector,
         limit=limit,
         with_payload=True,
     )
+    results = response.points
     return [
         SearchHit(
             id=str(r.id),

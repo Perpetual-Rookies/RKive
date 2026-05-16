@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from rkive.config import get_chat_model, get_qdrant_collection
+from rkive.config import get_llm_chat_model, get_qdrant_collection
 from rkive.db import get_conn
 from rkive.services.qdrant import get_client
 
@@ -31,5 +31,5 @@ async def health():
     return {
         "ok": True,
         "qdrant_collection": get_qdrant_collection(),
-        "chat_model": get_chat_model(),
+        "chat_model": get_llm_chat_model(),
     }
