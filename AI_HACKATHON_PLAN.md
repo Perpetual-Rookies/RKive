@@ -24,16 +24,16 @@
 **Files to modify:** `backend/rkive/routers/chat.py`
 
 ### Step 1.0 — Role-Aware Access Control and Retrieval Scope
-- [ ] Extend the WebSocket payload to include the user's role, or derive a default role server-side when it is missing.
-- [ ] Map role to allowed visibility before retrieval so the chat path only searches documents the user may access.
-- [ ] Keep the access-control decision server-side, not only in the frontend, so the UI cannot bypass it.
+- [x] Extend the WebSocket payload to include the user's role, or derive a default role server-side when it is missing.
+- [x] Map role to allowed visibility before retrieval so the chat path only searches documents the user may access.
+- [x] Keep the access-control decision server-side, not only in the frontend, so the UI cannot bypass it.
 
 ### Step 1.1 — Input Sanitisation (Prompt Injection Defence)
-- [ ] Before `question` is used anywhere, add a sanitisation step. Locate line 55:
+- [x] Before `question` is used anywhere, add a sanitisation step. Locate line 55:
   ```python
   question = str(payload["content"]).strip()
   ```
-- [ ] Replace it with a sanitised version:
+- [x] Replace it with a sanitised version:
   ```python
   raw_input = str(payload["content"]).strip()
   # -- Prompt injection defence --
@@ -42,8 +42,8 @@
   ```
 
 ### Step 1.2 — Hallucination Prevention via Score Threshold
-- [ ] After the Qdrant search returns hits, discard chunks that are not relevant enough.
-- [ ] Locate the line that calls `search_similar` and the line that builds `context`. Add a threshold filter between them:
+- [x] After the Qdrant search returns hits, discard chunks that are not relevant enough.
+- [x] Locate the line that calls `search_similar` and the line that builds `context`. Add a threshold filter between them:
   ```python
   # After this line:
   hits = await search_similar(vector, limit=6, allowed_visibility=allowed_visibility)
@@ -54,11 +54,11 @@
 
 If `hits` is empty after filtering, the context will be empty, and the system prompt's existing "If the answer is not in the context, say you do not have that information" rule will fire — giving an honest "I don't know" instead of a hallucinated answer.
 
-- [ ] Add a deterministic server-side fallback for the empty-hit case before streaming any answer.
-- [ ] If no relevant hits remain, return the exact no-information response without relying on the model to comply.
+- [x] Add a deterministic server-side fallback for the empty-hit case before streaming any answer.
+- [x] If no relevant hits remain, return the exact no-information response without relying on the model to comply.
 
 ### Step 1.3 — Strengthen the System Prompt for Strict Grounding
-- [ ] Locate the `system_prompt` string (currently around line 86) and replace it with this stronger version:
+- [x] Locate the `system_prompt` string (currently around line 86) and replace it with this stronger version:
   ```python
   system_prompt = (
     "You are RKive, a strictly grounded internal knowledge assistant for R Systems. "

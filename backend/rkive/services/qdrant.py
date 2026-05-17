@@ -42,11 +42,23 @@ class SearchHit:
     source_path: str
 
 
-async def search_similar(vector: list[float], limit: int = 6) -> list[SearchHit]:
+async def search_similar(vector: list[float], limit: int = 6, allowed_visibility: list[str] = None) -> list[SearchHit]:
     """Return the *limit* nearest neighbours for *vector*."""
+    query_filter = None
+    if allowed_visibility:
+        query_filter = qm.Filter(
+            must=[
+                qm.FieldCondition(
+                    key="visibility",
+                    match=qm.MatchAny(any=allowed_visibility)
+                )
+            ]
+        )
+
     response = await get_client().query_points(
         collection_name=get_qdrant_collection(),
         query=vector,
+        query_filter=query_filter,
         limit=limit,
         with_payload=True,
     )

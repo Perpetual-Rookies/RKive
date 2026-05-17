@@ -1,5 +1,11 @@
 # RKive
 
+**Hackathon Progress Tracker**:
+- [x] **Phase 1:** Security — Hallucination Prevention & Prompt Injection Defence
+- [ ] **Phase 2:** Search Quality Improvement
+- [ ] **Phase 3:** Premium UI/UX Upgrade
+- [ ] **Phase 4:** Demo Data Preparation
+
 Reactive org-level knowledge chat: React UI, Python API, Python (uv) ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
 
 ## Prerequisites
