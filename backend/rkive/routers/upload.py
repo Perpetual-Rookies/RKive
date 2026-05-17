@@ -74,5 +74,6 @@ async def download_document(doc_id: str):
     return FileResponse(
         path=storage_path,
         filename=doc["filename"],
-        media_type="text/markdown"
+        media_type="text/plain",
+        content_disposition_type="inline"
     )

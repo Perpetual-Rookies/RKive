@@ -383,9 +383,16 @@ export default function App() {
                     {isAssistant && !message.streaming && citations.length > 0 && (
                       <div className="citation-row">
                         {citations.map((citation, index) => (
-                          <span key={`${citation.documentId}-${index}`} className="citation-pill">
-                            [{index + 1}] {formatCitationName(citation)} ({formatCitationScore(citation.score)})
-                          </span>
+                          <a
+                            key={`${citation.documentId}-${index}`}
+                            href={`${apiBase()}/api/documents/${citation.documentId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="citation-pill"
+                          >
+                            <span className="citation-name">[{index + 1}] {formatCitationName(citation)}</span>
+                            <span className="citation-score">({formatCitationScore(citation.score)})</span>
+                          </a>
                         ))}
                       </div>
                     )}

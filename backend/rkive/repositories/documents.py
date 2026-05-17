@@ -21,7 +21,7 @@ async def get_document(doc_id: str) -> dict | None:
     """Retrieve a document by ID."""
     async with get_conn() as conn:
         row = await conn.fetchone(
-            "SELECT id, filename, storage_path, checksum, uploaded_at FROM documents WHERE id = %s",
+            "SELECT id, filename, storage_path, checksum, created_at FROM documents WHERE id = %s",
             (doc_id,),
         )
     return dict(row) if row else None
