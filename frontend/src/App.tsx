@@ -1,13 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 
 type Role = "user" | "assistant" | "system";
+
+type AppRole = "Standard Employee" | "Sales Representative";
+
+type Visibility = "Org Level (Public)" | "Sales Project (Private)";
+
+type Citation = {
+  documentId: string;
+  sourcePath: string;
+  score: number;
+  filename: string;
+};
 
 type ChatMessage = {
   id: string;
   role: Role;
   content: string;
   streaming?: boolean;
+  citations?: Citation[];
 };
+
+const ROLE_OPTIONS: AppRole[] = ["Standard Employee", "Sales Representative"];
+
+const VISIBILITY_OPTIONS: Visibility[] = [
+  "Org Level (Public)",
+  "Sales Project (Private)",
+];
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE ?? "";
@@ -26,8 +46,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [role, setRole] = useState<AppRole>(ROLE_OPTIONS[0]);
+  const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
   const wsRef = useRef<WebSocket | null>(null);
   const assistantIdRef = useRef<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages]);
 
   useEffect(() => {
     const ws = new WebSocket(wsUrl());
@@ -55,6 +82,57 @@ export default function App() {
           return;
         }
         if (msg.type === "citations") {
+          const aid = assistantIdRef.current;
+          const rawCitations = Array.isArray(msg.citations)
+            ? msg.citations
+                .map((citation) => {
+                  if (!citation || typeof citation !== "object") {
+                    return null;
+                  }
+                  const record = citation as Record<string, unknown>;
+                  const documentId =
+                    typeof record.documentId === "string" ? record.documentId : "";
+                  const sourcePath =
+                    typeof record.sourcePath === "string" ? record.sourcePath : "";
+                  const filename =
+                    typeof record.filename === "string" ? record.filename : "";
+                  const score =
+                    typeof record.score === "number" ? record.score : Number(record.score ?? 0);
+
+                  if (!documentId && !sourcePath) {
+                    return null;
+                  }
+
+                  return {
+                    documentId,
+                    sourcePath,
+                    filename,
+                    score: Number.isFinite(score) ? score : 0,
+                  } satisfies Citation;
+                })
+                .filter((citation): citation is Citation => citation !== null)
+            : [];
+
+          const citations = Array.from(
+            rawCitations
+              .reduce((map, citation) => {
+                const key = `${citation.filename}|${citation.sourcePath}|${citation.documentId}`;
+                const existing = map.get(key);
+                if (!existing || citation.score > existing.score) {
+                  map.set(key, citation);
+                }
+                return map;
+              }, new Map<string, Citation>())
+              .values(),
+          );
+
+          if (aid) {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === aid ? { ...message, citations } : message,
+              ),
+            );
+          }
           return;
         }
         if (msg.type === "done") {
@@ -71,18 +149,29 @@ export default function App() {
           return;
         }
         if (msg.type === "error") {
+          const aid = assistantIdRef.current;
           assistantIdRef.current = null;
           setBusy(false);
           const text =
             typeof msg.message === "string" ? msg.message : "Unknown error";
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: `Error: ${text}`,
-            },
-          ]);
+          if (aid) {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === aid
+                  ? { ...message, content: `Error: ${text}`, streaming: false }
+                  : message,
+              ),
+            );
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: `Error: ${text}`,
+              },
+            ]);
+          }
         }
       } catch {
         /* ignore */
@@ -117,11 +206,13 @@ export default function App() {
         type: "chat",
         content: text,
         conversationId: conversationId ?? undefined,
+        role,
+        visibility,
       }),
     );
-  }, [busy, conversationId, input]);
+  }, [busy, conversationId, input, role, visibility]);
 
-  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -153,144 +244,189 @@ export default function App() {
     }
   };
 
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        maxWidth: 720,
-        margin: "0 auto",
-        padding: "1.25rem",
-      }}
-    >
-      <header style={{ marginBottom: "1rem" }}>
-        <h1 style={{ fontSize: "1.35rem", fontWeight: 600, margin: 0 }}>
-          RKive
-        </h1>
-        <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-          Org knowledge chat · Markdown upload
-        </p>
-        <p className="mono" style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-          {connected ? "● connected" : "○ disconnected"}
-        </p>
-      </header>
+  const formatCitationName = (citation: Citation) => {
+    const candidate =
+      citation.filename?.trim() || citation.sourcePath?.trim() || citation.documentId;
+    const pieces = candidate.split(/[\\/]/);
+    return pieces[pieces.length - 1] || candidate || citation.documentId;
+  };
 
-      <section
-        style={{
-          padding: "0.75rem 1rem",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          marginBottom: "1rem",
-        }}
-      >
-        <label
-          style={{
-            display: "inline-block",
-            cursor: "pointer",
-            padding: "0.45rem 0.85rem",
-            background: "var(--accent-dim)",
-            borderRadius: 8,
-            fontSize: "0.875rem",
-            fontWeight: 600,
-          }}
-        >
-          Upload markdown
+  const formatCitationScore = (score: number) => {
+    if (!Number.isFinite(score)) return "0%";
+    return `${Math.max(0, Math.min(100, Math.round(score * 100)))}%`;
+  };
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-block">
+          <div className="brand-mark">RK</div>
+          <div>
+            <h1 className="brand-title">RKive</h1>
+            <p className="brand-copy">Grounded internal knowledge chat</p>
+          </div>
+        </div>
+
+        <section className="sidebar-section">
+          <div className="section-heading">
+            <span>Logged in as</span>
+            <span className={`status-pill ${connected ? "is-online" : "is-offline"}`}>
+              <span className="status-dot" />
+              {connected ? "Connected" : "Disconnected"}
+            </span>
+          </div>
+          <label className="field-label" htmlFor="role-select">
+            Role
+          </label>
+          <select
+            id="role-select"
+            className="select"
+            value={role}
+            onChange={(e) => setRole(e.target.value as AppRole)}
+          >
+            {ROLE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <div className="sidebar-divider" />
+
+        <section className="sidebar-section">
+          <div className="section-heading">
+            <span>Document upload</span>
+            <span className="helper-chip">Markdown</span>
+          </div>
+          <p className="section-copy">
+            Upload knowledge content and choose the visibility scope before ingesting.
+          </p>
+          <label className="field-label" htmlFor="visibility-select">
+            Visibility
+          </label>
+          <select
+            id="visibility-select"
+            className="select"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as Visibility)}
+          >
+            {VISIBILITY_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <label className="upload-button" htmlFor="document-upload">
+            Choose markdown
+          </label>
           <input
+            id="document-upload"
             type="file"
             accept=".md,text/markdown"
-            style={{ display: "none" }}
+            className="file-input"
             onChange={onUpload}
           />
-        </label>
-        {uploadStatus && (
-          <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>{uploadStatus}</p>
-        )}
-      </section>
 
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.65rem",
-          paddingBottom: "0.5rem",
-        }}
-      >
-        {messages.length === 0 && (
-          <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
-            Ask a question about ingested documents, or upload a .md file first.
-          </p>
-        )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-              maxWidth: "92%",
-              padding: "0.65rem 0.85rem",
-              borderRadius: 12,
-              background:
-                m.role === "user" ? "var(--user-bubble)" : "var(--assistant-bubble)",
-              border: "1px solid var(--border)",
-              whiteSpace: "pre-wrap",
-              fontSize: "0.92rem",
-            }}
-          >
-            {m.content || (m.streaming ? "…" : "")}
+          {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
+          <p className="upload-note">Files are sent with the selected visibility.</p>
+        </section>
+      </aside>
+
+      <main className="panel">
+        <header className="panel-topbar">
+          <div>
+            <p className="eyebrow">Knowledge workspace</p>
+            <h2>Ask RKive about uploaded documents</h2>
           </div>
-        ))}
-      </div>
+          <p className="panel-meta mono">
+            {conversationId ? `Conversation ${conversationId.slice(0, 8)}` : "New conversation"}
+          </p>
+        </header>
 
-      <footer
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          paddingTop: "0.75rem",
-          borderTop: "1px solid var(--border)",
-        }}
-      >
-        <input
-          type="text"
-          value={input}
-          disabled={!connected || busy}
-          placeholder={connected ? "Ask something…" : "Connecting…"}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+        <section className="chat-shell">
+          <div className="chat-list">
+            {messages.length === 0 && (
+              <div className="empty-state">
+                <p className="empty-title">Ready when you are</p>
+                <p className="empty-copy">
+                  Upload a document on the left, then ask a grounded question here.
+                </p>
+              </div>
+            )}
+
+            {messages.map((message) => {
+              const isUser = message.role === "user";
+              const isAssistant = message.role === "assistant";
+              const citations = message.citations ?? [];
+
+              return (
+                <div
+                  key={message.id}
+                  className={`message-row ${isUser ? "is-user" : "is-assistant"}`}
+                >
+                  <div className={`message-card ${isUser ? "is-user" : "is-assistant"}`}>
+                    {isAssistant && <span className="message-label">RKive</span>}
+                    {isUser && <span className="message-label">You</span>}
+                    <div className="message-content">
+                      {message.content}
+                      {message.streaming && (
+                        <span className="typing-indicator" aria-label="Streaming response">
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                        </span>
+                      )}
+                    </div>
+
+                    {isAssistant && !message.streaming && citations.length > 0 && (
+                      <div className="citation-row">
+                        {citations.map((citation, index) => (
+                          <span key={`${citation.documentId}-${index}`} className="citation-pill">
+                            [{index + 1}] {formatCitationName(citation)} ({formatCitationScore(citation.score)})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <form
+            className="composer"
+            onSubmit={(e) => {
               e.preventDefault();
               sendChat();
-            }
-          }}
-          style={{
-            flex: 1,
-            padding: "0.65rem 0.85rem",
-            borderRadius: 10,
-            border: "1px solid var(--border)",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontSize: "0.95rem",
-          }}
-        />
-        <button
-          type="button"
-          disabled={!connected || busy || !input.trim()}
-          onClick={sendChat}
-          style={{
-            padding: "0 1rem",
-            borderRadius: 10,
-            border: "none",
-            background: "var(--accent)",
-            color: "#0a0e14",
-            fontWeight: 600,
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
-          Send
-        </button>
-      </footer>
+            }}
+          >
+            <input
+              type="text"
+              value={input}
+              disabled={!connected || busy}
+              placeholder={connected ? "Ask something grounded…" : "Connecting to RKive…"}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendChat();
+                }
+              }}
+              className="composer-input"
+            />
+            <button
+              type="submit"
+              className="composer-button"
+              disabled={!connected || busy || !input.trim()}
+            >
+              Send
+            </button>
+          </form>
+        </section>
+      </main>
     </div>
   );
 }

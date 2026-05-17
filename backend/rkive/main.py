@@ -7,6 +7,7 @@ All DB queries live in rkive/repositories/.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,7 +16,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from rkive.db import run_migrations
 from rkive.routers import chat_router, health_router, upload_router
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s  %(levelname)s  %(name)s  %(message)s",
+)
 
 
 @asynccontextmanager
