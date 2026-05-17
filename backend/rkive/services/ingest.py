@@ -61,7 +61,7 @@ def chunk_markdown(text: str, max_chars: int = 1200) -> list[str]:
     return [c for c in chunks if c.strip()]
 
 
-async def ingest_file(file_path: str, document_id: str) -> int:
+async def ingest_file(file_path: str, document_id: str, filename: str, visibility: str = "public") -> int:
     """
     Read *file_path*, chunk it, embed each chunk via Ollama, and upsert
     the resulting points into Qdrant.
@@ -93,6 +93,8 @@ async def ingest_file(file_path: str, document_id: str) -> int:
                     "text": chunk[:8000],
                     "document_id": document_id,
                     "source_path": file_path,
+                    "filename": filename,
+                    "visibility": visibility,
                     "chunk_index": idx,
                     "chunk_hash": hashlib.sha256(chunk.encode()).hexdigest()[:16],
                 },

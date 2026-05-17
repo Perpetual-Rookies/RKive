@@ -40,6 +40,7 @@ class SearchHit:
     text: str
     document_id: str
     source_path: str
+    filename: str
 
 
 async def search_similar(vector: list[float], limit: int = 6, allowed_visibility: list[str] = None) -> list[SearchHit]:
@@ -70,6 +71,7 @@ async def search_similar(vector: list[float], limit: int = 6, allowed_visibility
             text=str((r.payload or {}).get("text", "")),
             document_id=str((r.payload or {}).get("document_id", "")),
             source_path=str((r.payload or {}).get("source_path", "")),
+            filename=str((r.payload or {}).get("filename", "")),
         )
         for r in results
     ]

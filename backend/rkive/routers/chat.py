@@ -155,7 +155,7 @@ async def chat(ws: WebSocket):
                 )
 
             context = "\n\n".join(
-                f"[{i + 1}] source: {h.source_path or h.document_id}\n{h.text}"
+                f"[{i + 1}] source: {h.filename or h.source_path or h.document_id}\n{h.text}"
                 for i, h in enumerate(hits)
                 if h.text
             )
@@ -184,6 +184,7 @@ async def chat(ws: WebSocket):
                     document_id=h.document_id,
                     source_path=h.source_path,
                     score=h.score,
+                    filename=h.filename,
                 )
                 for h in hits
             ]
@@ -227,6 +228,7 @@ async def chat(ws: WebSocket):
                                 "documentId": c.document_id,
                                 "sourcePath": c.source_path,
                                 "score": c.score,
+                                "filename": c.filename,
                             }
                             for c in citations
                         ]

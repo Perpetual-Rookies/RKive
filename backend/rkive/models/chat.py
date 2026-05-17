@@ -8,6 +8,7 @@ class Citation:
     document_id: str
     source_path: str
     score: float
+    filename: str = ""
 
 
 @dataclass
