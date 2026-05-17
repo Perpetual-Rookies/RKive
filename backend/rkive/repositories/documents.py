@@ -27,6 +27,22 @@ async def get_document(doc_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_document_by_checksum(checksum: str) -> dict | None:
+    """Retrieve a document by checksum."""
+    async with get_conn() as conn:
+        row = await conn.fetchone(
+            """
+            SELECT id, filename, storage_path, checksum, created_at
+            FROM documents
+            WHERE checksum = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (checksum,),
+        )
+    return dict(row) if row else None
+
+
 async def insert_ingestion_job(document_id: str) -> str:
     """Create a new ingestion job in 'running' state and return its UUID."""
     async with get_conn() as conn:

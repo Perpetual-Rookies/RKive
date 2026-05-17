@@ -6,7 +6,19 @@
 - [x] **Phase 3:** Premium UI/UX Upgrade
 - [x] **Phase 4:** Demo Data Preparation
 
-Reactive org-level knowledge chat: React UI, Python API, Python (uv) ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
+Reactive org-level knowledge chat: React UI, FastAPI backend, markdown ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
+
+## Current Features
+
+- Markdown document upload with visibility-aware ingestion
+- Deduplicated re-upload flow using document checksums
+- Markdown-aware chunking with overlap to improve retrieval quality on longer documents
+- Metadata-aware embeddings that include filename and visibility context
+- Qdrant vector retrieval with visibility filtering
+- Lightweight second-stage reranking before context is sent to the LLM
+- Grounded answers with citations back to uploaded documents
+- Streaming chat UI over WebSocket
+- Basic backend unit tests for ingestion, reranking, visibility normalization, and upload deduplication
 
 ## Prerequisites
 
@@ -25,14 +37,30 @@ make up
 - **Web UI:** http://localhost:8080  
 - **API only:** http://localhost:3001 (health: http://localhost:3001/health)
 
-Upload a `.md` file from the UI, then ask questions in the chat. Answers use RAG over Qdrant; ingestion runs the Python package under `scripts/` via `uv run`.
+Upload a `.md` file from the UI, then ask questions in the chat. Answers use a RAG pipeline over Qdrant:
+
+1. documents are chunked into smaller passages
+2. each chunk is embedded and stored with metadata
+3. the question is embedded at query time
+4. candidate chunks are retrieved from Qdrant
+5. candidates are reranked before being sent to the LLM
+6. the final answer is streamed back with citations
 
 ## Local development (without Docker for Node/React)
 
 1. Start **Postgres** and **Qdrant** (e.g. `docker compose up postgres qdrant -d`).
-2. **Backend:** `cd backend && cp ../.env.example ../.env` — set `DATABASE_URL`, `QDRANT_URL`, `LLM_PROVIDER`, and `LLM_API_KEY`, then `npm install && npm run dev`.
-3. **Ingest scripts:** `cd scripts && uv sync` (requires [uv](https://github.com/astral-sh/uv)).
-4. **Frontend:** `cd frontend && npm install && npm run dev` — Vite proxies `/api` and `/ws` to `http://localhost:3001` by default (`VITE_API_BASE` in `frontend/.env`).
+2. **Backend:** `cp .env.example .env`, set `DATABASE_URL`, `QDRANT_URL`, `LLM_PROVIDER`, and `LLM_API_KEY`, then run `make dev-api`.
+3. **Frontend:** `cd frontend && npm install && npm run dev` — Vite proxies `/api` and `/ws` to `http://localhost:3001` by default (`VITE_API_BASE` in `frontend/.env`).
+
+## Search and Retrieval Notes
+
+- Ingestion normalizes visibility labels so filtering stays consistent across upload and chat.
+- Re-uploading the same file reuses the existing document record and replaces prior vectors instead of duplicating them.
+- Chunk embeddings include filename and visibility text so document metadata can influence semantic retrieval.
+- Retrieval is intentionally two-stage:
+  - Qdrant provides a broader candidate set for recall
+  - a local reranker reorders and trims that set before prompt construction
+- The current reranker is a lightweight heuristic, not a cross-encoder model. It is optimized for hackathon simplicity and reliability.
 
 ## Environment variables
 
@@ -57,6 +85,19 @@ See [.env.example](.env.example). Important:
 | `make down` | `docker compose down` |
 | `make logs` | Tail API logs |
 | `make build` | Build images |
+| `make dev-api` | Run the FastAPI backend locally with `uvicorn` |
+
+## Tests
+
+Backend tests currently use the Python standard library `unittest` framework.
+
+Run them inside Docker:
+
+```bash
+docker compose build api
+docker compose up -d api
+docker compose exec api python -m unittest discover -s tests -v
+```
 
 ## Layout
 

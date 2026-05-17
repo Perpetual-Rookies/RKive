@@ -9,13 +9,15 @@ from fastapi.responses import FileResponse
 
 from rkive.config import get_upload_dir
 from rkive.repositories.documents import (
-    insert_document,
     get_document,
+    get_document_by_checksum,
+    insert_document,
     insert_ingestion_job,
     update_job_failed,
     update_job_succeeded,
 )
 from rkive.services.ingest import ingest_file
+from rkive.visibility import DEFAULT_VISIBILITY, normalize_visibility
 
 router = APIRouter(prefix="/api")
 
@@ -23,7 +25,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...), visibility: str = Form("public")):
+async def upload(file: UploadFile = File(...), visibility: str = Form(DEFAULT_VISIBILITY)):
     """
     Accept a markdown (.md) file, persist it to disk, record metadata in
     Postgres, run the Qdrant ingestion pipeline, and return the result.
@@ -41,18 +43,30 @@ async def upload(file: UploadFile = File(...), visibility: str = Form("public"))
 
     checksum = hashlib.sha256(contents).hexdigest()
 
-    upload_dir = get_upload_dir()
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    dest = upload_dir / f"{uuid.uuid4()}{Path(filename).suffix or '.md'}"
-    dest.write_bytes(contents)
+    visibility = normalize_visibility(visibility)
+    existing_doc = await get_document_by_checksum(checksum)
 
-    doc_id = await insert_document(filename, str(dest), checksum)
+    if existing_doc:
+        doc_id = str(existing_doc["id"])
+        dest = Path(str(existing_doc["storage_path"]))
+    else:
+        upload_dir = get_upload_dir()
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / f"{uuid.uuid4()}{Path(filename).suffix or '.md'}"
+        dest.write_bytes(contents)
+        doc_id = await insert_document(filename, str(dest), checksum)
+
     job_id = await insert_ingestion_job(doc_id)
 
     try:
         chunks = await ingest_file(str(dest), doc_id, filename, visibility)
         await update_job_succeeded(job_id)
-        return {"documentId": doc_id, "jobId": job_id, "chunks": chunks}
+        return {
+            "documentId": doc_id,
+            "jobId": job_id,
+            "chunks": chunks,
+            "deduplicated": existing_doc is not None,
+        }
     except Exception as exc:
         err = str(exc)
         await update_job_failed(job_id, err)
@@ -60,6 +74,8 @@ async def upload(file: UploadFile = File(...), visibility: str = Form("public"))
             status_code=500,
             detail={"documentId": doc_id, "jobId": job_id, "error": err},
         )
+
+
 @router.get("/documents/{doc_id}")
 async def download_document(doc_id: str):
     """Serve a previously uploaded markdown file by its document ID."""

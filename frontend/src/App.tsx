@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import type { ReactNode } from "react";
 
 type Role = "user" | "assistant" | "system";
 
@@ -39,6 +40,68 @@ function wsUrl(): string {
   return `${proto}//${window.location.host}/ws`;
 }
 
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function renderAssistantContent(content: string): ReactNode {
+  const lines = content
+    .split("\n")
+    .map((line) => line.trimEnd());
+
+  const nodes: ReactNode[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    nodes.push(
+      <ul key={`list-${nodes.length}`} className="message-list">
+        {listItems.map((item, index) => (
+          <li key={index}>{renderInlineMarkdown(item)}</li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    const bulletMatch = trimmed.match(/^[-*]\s+(.*)$/);
+
+    if (bulletMatch) {
+      listItems.push(bulletMatch[1]);
+      return;
+    }
+
+    flushList();
+
+    if (!trimmed) {
+      return;
+    }
+
+    nodes.push(
+      <p key={`p-${nodes.length}`} className="message-paragraph">
+        {renderInlineMarkdown(trimmed)}
+      </p>,
+    );
+  });
+
+  flushList();
+
+  if (nodes.length === 0) {
+    return content;
+  }
+
+  return nodes;
+}
+
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -50,10 +113,15 @@ export default function App() {
   const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
   const wsRef = useRef<WebSocket | null>(null);
   const assistantIdRef = useRef<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const chatList = chatListRef.current;
+    if (!chatList) return;
+    chatList.scrollTo({
+      top: chatList.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages]);
 
   useEffect(() => {
@@ -347,7 +415,7 @@ export default function App() {
         </header>
 
         <section className="chat-shell">
-          <div className="chat-list">
+          <div ref={chatListRef} className="chat-list">
             {messages.length === 0 && (
               <div className="empty-state">
                 <p className="empty-title">Ready when you are</p>
@@ -371,7 +439,7 @@ export default function App() {
                     {isAssistant && <span className="message-label">RKive</span>}
                     {isUser && <span className="message-label">You</span>}
                     <div className="message-content">
-                      {message.content}
+                      {isAssistant ? renderAssistantContent(message.content) : message.content}
                       {message.streaming && (
                         <span className="typing-indicator" aria-label="Streaming response">
                           <span className="typing-dot" />
@@ -401,7 +469,6 @@ export default function App() {
                 </div>
               );
             })}
-            <div ref={messagesEndRef} />
           </div>
 
           <form

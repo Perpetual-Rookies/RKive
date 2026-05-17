@@ -1,8 +1,19 @@
-"""WebSocket streaming RAG chat router."""
+"""WebSocket streaming RAG chat router.
+
+This module coordinates the online part of the RAG pipeline:
+1. receive the user's question
+2. embed the question as a vector
+3. retrieve candidate chunks from Qdrant
+4. rerank those chunks
+5. build a grounded prompt for the chat model
+6. stream the answer back over WebSocket
+
+The actual retrieval and reranking rules live in service modules so the router
+stays focused on request orchestration.
+"""
 
 import json
 import logging
-import os
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -12,6 +23,8 @@ from rkive.models.chat import Citation
 from rkive.repositories.conversations import create_conversation, insert_message
 from rkive.services.llm import chat_stream, embed
 from rkive.services.qdrant import ensure_collection, search_similar
+from rkive.services.rerank import rerank_hits
+from rkive.visibility import DEFAULT_VISIBILITY, ORG_PUBLIC, SALES_PRIVATE
 
 log = logging.getLogger("rkive.chat")
 
@@ -35,8 +48,38 @@ def _safe_get_str(data: dict[str, Any], key: str) -> str:
 
 
 def _is_no_info_response(text: str) -> bool:
+    """Detect the explicit fallback phrase used when no grounded answer exists."""
     normalized = " ".join(text.lower().split())
     return "do not have that information" in normalized or "don't have that information" in normalized
+
+
+def _hit_key(hit) -> str:
+    return f"{hit.filename}|{hit.source_path}|{hit.document_id}"
+
+
+def _dedupe_hits_for_citations(hits):
+    """Collapse chunk-level hits into one user-facing citation per document.
+
+    Retrieval can return multiple chunks from the same file.  That is useful for
+    ranking, but it is confusing in the final answer because the model cites
+    numbered sources while the UI displays one clickable item per document.
+    This helper keeps only the strongest hit per document-like source key so the
+    model and UI share the same numbering scheme.
+    """
+    deduped: dict[str, Any] = {}
+    ordered_keys: list[str] = []
+
+    for hit in hits:
+        key = _hit_key(hit)
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = hit
+            ordered_keys.append(key)
+            continue
+        if hit.score > existing.score:
+            deduped[key] = hit
+
+    return [deduped[key] for key in ordered_keys]
 
 
 @router.websocket("/ws")
@@ -82,13 +125,16 @@ async def chat(ws: WebSocket):
 
             conversation_id: str | None = payload.get("conversationId") or None
             role = _safe_get_str(payload, "role") or "employee"
-            visibility = _safe_get_str(payload, "visibility")
+            visibility = _safe_get_str(payload, "visibility") or DEFAULT_VISIBILITY
 
-            allowed_visibility = ["Org Level (Public)"]
+            # Visibility is enforced during retrieval, not by the LLM prompt.
+            # That means private chunks are filtered out before they can even
+            # reach the model context window.
+            allowed_visibility = [ORG_PUBLIC]
             if role == "Sales Representative":
-                allowed_visibility = ["Org Level (Public)", "Sales Project (Private)"]
+                allowed_visibility = [ORG_PUBLIC, SALES_PRIVATE]
             elif role == "Standard Employee":
-                allowed_visibility = ["Org Level (Public)"]
+                allowed_visibility = [ORG_PUBLIC]
 
             log.info(
                 "chat_message_received",
@@ -122,6 +168,9 @@ async def chat(ws: WebSocket):
 
             # ── embed + retrieve ──────────────────────────────────────────────
             try:
+                # The query uses the search_query prefix because some embedding
+                # models work better when document and query embeddings are
+                # labelled with their different roles.
                 vector = await embed(f"search_query: {question}")
             except Exception as exc:
                 await ws.send_text(_msg(type="error", message=str(exc)))
@@ -131,17 +180,20 @@ async def chat(ws: WebSocket):
                 )
                 continue
 
-            hits = await search_similar(vector, limit=6, allowed_visibility=allowed_visibility)
-            SIMILARITY_THRESHOLD = 0.45
-            hits = [h for h in hits if h.score >= SIMILARITY_THRESHOLD]
+            # First-stage retrieval favors recall: ask Qdrant for more chunks
+            # than we actually want to show the LLM, then narrow them down with
+            # a cheaper second-stage rerank.
+            hits = await search_similar(vector, limit=12, allowed_visibility=allowed_visibility)
+            hits = rerank_hits(question, hits)
+            cited_hits = _dedupe_hits_for_citations(hits)
 
-            if hits:
+            if cited_hits:
                 log.info(
                     "retrieval_hits",
                     extra={
                         "conversation_id": conversation_id,
-                        "hit_count": len(hits),
-                        "top_score": hits[0].score,
+                        "hit_count": len(cited_hits),
+                        "top_score": cited_hits[0].score,
                     },
                 )
             else:
@@ -152,9 +204,12 @@ async def chat(ws: WebSocket):
 
             context = "\n\n".join(
                 f"[{i + 1}] source: {h.filename or h.source_path or h.document_id}\n{h.text.replace('search_document:', '', 1).strip()}"
-                for i, h in enumerate(hits)
+                for i, h in enumerate(cited_hits)
                 if h.text
             )
+            # The system prompt is intentionally strict: the model is told to
+            # answer only from retrieved context and to use a fixed fallback
+            # message when the knowledge base does not contain the answer.
             system_prompt = (
                 "You are RKive, a strictly grounded internal knowledge assistant for R Systems. "
                 "Your ONLY job is to answer questions using the document Context provided below.\n\n"
@@ -177,7 +232,7 @@ async def chat(ws: WebSocket):
                     score=h.score,
                     filename=h.filename,
                 )
-                for h in hits
+                for h in cited_hits
             ]
 
             # ── stream response ───────────────────────────────────────────────

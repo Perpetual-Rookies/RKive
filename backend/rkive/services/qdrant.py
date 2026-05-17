@@ -33,6 +33,23 @@ async def upsert_points(points: list[qm.PointStruct]) -> None:
     await get_client().upsert(collection_name=get_qdrant_collection(), points=points)
 
 
+async def delete_points_by_document_id(document_id: str) -> None:
+    """Delete existing points for a document before re-ingesting it."""
+    await get_client().delete(
+        collection_name=get_qdrant_collection(),
+        points_selector=qm.FilterSelector(
+            filter=qm.Filter(
+                must=[
+                    qm.FieldCondition(
+                        key="document_id",
+                        match=qm.MatchValue(value=document_id),
+                    )
+                ]
+            )
+        ),
+    )
+
+
 @dataclass
 class SearchHit:
     id: str
