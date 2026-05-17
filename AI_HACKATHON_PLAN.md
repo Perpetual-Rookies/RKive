@@ -114,7 +114,7 @@ If `hits` is empty after filtering, the context will be empty, and the system pr
 **Files to modify:** `frontend/src/styles.css`, `frontend/src/App.tsx`
 
 ### Step 3.1 — Dark Mode Color Palette (`frontend/src/styles.css`)
-- [ ] Replace the entire content of `styles.css` with a proper dark-mode design system:
+- [x] Replace the entire content of `styles.css` with a proper dark-mode design system:
     ```css
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -123,7 +123,7 @@ If `hits` is empty after filtering, the context will be empty, and the system pr
     ```
 
 ### Step 3.2 — Full App.tsx Redesign
-- [ ] Rewrite `frontend/src/App.tsx` to implement a proper sidebar + main-panel layout:
+- [x] Rewrite `frontend/src/App.tsx` to implement a proper sidebar + main-panel layout:
   - Left sidebar (250px fixed): Contains the RKive logo, "Logged in as" role selector, divider, and document upload section with visibility selector. Style the sidebar with `var(--surface)` background.
   - Main panel (flex: 1): Contains the chat message list (scrollable) and a bottom-pinned input bar.
   - Chat bubbles: User messages right-aligned in `var(--user-bubble)` (indigo). Assistant messages left-aligned in `var(--assistant-bubble)` (dark slate) with the `RKive` label above them.
