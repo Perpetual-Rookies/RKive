@@ -4,11 +4,13 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile, Form
+from fastapi.responses import FileResponse
 
 from rkive.config import get_upload_dir
 from rkive.repositories.documents import (
     insert_document,
+    get_document,
     insert_ingestion_job,
     update_job_failed,
     update_job_succeeded,
@@ -21,7 +23,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), visibility: str = Form("public")):
     """
     Accept a markdown (.md) file, persist it to disk, record metadata in
     Postgres, run the Qdrant ingestion pipeline, and return the result.
@@ -48,7 +50,7 @@ async def upload(file: UploadFile = File(...)):
     job_id = await insert_ingestion_job(doc_id)
 
     try:
-        chunks = await ingest_file(str(dest), doc_id)
+        chunks = await ingest_file(str(dest), doc_id, filename, visibility)
         await update_job_succeeded(job_id)
         return {"documentId": doc_id, "jobId": job_id, "chunks": chunks}
     except Exception as exc:
@@ -58,3 +60,19 @@ async def upload(file: UploadFile = File(...)):
             status_code=500,
             detail={"documentId": doc_id, "jobId": job_id, "error": err},
         )
+@router.get("/documents/{doc_id}")
+async def download_document(doc_id: str):
+    """Serve a previously uploaded markdown file by its document ID."""
+    doc = await get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    storage_path = Path(doc["storage_path"])
+    if not storage_path.exists():
+        raise HTTPException(status_code=404, detail="File missing from storage")
+        
+    return FileResponse(
+        path=storage_path,
+        filename=doc["filename"],
+        media_type="text/markdown"
+    )

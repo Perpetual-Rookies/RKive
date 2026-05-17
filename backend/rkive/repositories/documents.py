@@ -17,6 +17,16 @@ async def insert_document(filename: str, storage_path: str, checksum: str) -> st
     return str(row["id"])
 
 
+async def get_document(doc_id: str) -> dict | None:
+    """Retrieve a document by ID."""
+    async with get_conn() as conn:
+        row = await conn.fetchone(
+            "SELECT id, filename, storage_path, checksum, uploaded_at FROM documents WHERE id = %s",
+            (doc_id,),
+        )
+    return dict(row) if row else None
+
+
 async def insert_ingestion_job(document_id: str) -> str:
     """Create a new ingestion job in 'running' state and return its UUID."""
     async with get_conn() as conn:
