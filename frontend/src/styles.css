@@ -403,6 +403,15 @@ code,
   color: var(--text);
   font-size: 0.8rem;
   font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.citation-pill:hover {
+  background: var(--surface-3);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .typing-indicator {

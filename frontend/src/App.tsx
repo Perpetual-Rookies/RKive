@@ -223,6 +223,7 @@ export default function App() {
     setUploadStatus("Uploading…");
     const fd = new FormData();
     fd.append("file", file);
+    fd.append("visibility", visibility);
     try {
       const res = await fetch(`${apiBase()}/api/upload`, {
         method: "POST",
