@@ -6,11 +6,12 @@
 - [x] **Phase 3:** Premium UI/UX Upgrade
 - [x] **Phase 4:** Demo Data Preparation
 
-Reactive org-level knowledge chat: React UI, FastAPI backend, markdown ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
+Reactive org-level knowledge chat: React UI, FastAPI backend, markdown and PDF ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
 
 ## Current Features
 
-- Markdown document upload with visibility-aware ingestion
+- Markdown and PDF document upload with visibility-aware ingestion
+- PDF text extraction and markdown-aware processing
 - Deduplicated re-upload flow using document checksums
 - Markdown-aware chunking with overlap to improve retrieval quality on longer documents
 - Metadata-aware embeddings that include filename and visibility context
@@ -37,7 +38,7 @@ make up
 - **Web UI:** http://localhost:8080  
 - **API only:** http://localhost:3001 (health: http://localhost:3001/health)
 
-Upload a `.md` file from the UI, then ask questions in the chat. Answers use a RAG pipeline over Qdrant:
+Upload a `.md` or `.pdf` file from the UI, then ask questions in the chat. Answers use a RAG pipeline over Qdrant:
 
 1. documents are chunked into smaller passages
 2. each chunk is embedded and stored with metadata

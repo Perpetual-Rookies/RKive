@@ -17,6 +17,7 @@ from rkive.repositories.documents import (
     update_job_succeeded,
 )
 from rkive.services.ingest import ingest_file
+from rkive.services.pdf import extract_text_from_pdf
 from rkive.visibility import DEFAULT_VISIBILITY, normalize_visibility
 
 router = APIRouter(prefix="/api")
@@ -27,15 +28,24 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 @router.post("/upload")
 async def upload(file: UploadFile = File(...), visibility: str = Form(DEFAULT_VISIBILITY)):
     """
-    Accept a markdown (.md) file, persist it to disk, record metadata in
+    Accept a markdown (.md) or PDF (.pdf) file, persist it to disk, record metadata in
     Postgres, run the Qdrant ingestion pipeline, and return the result.
     """
     filename = file.filename or ""
-    if not filename.lower().endswith(".md") and file.content_type not in (
-        "text/markdown",
-        "text/plain",
-    ):
-        raise HTTPException(status_code=400, detail="Only markdown (.md) files are allowed")
+    file_ext = Path(filename).suffix.lower()
+    
+    # Check file type
+    if file_ext == ".pdf":
+        content_type = "application/pdf"
+    elif file_ext == ".md":
+        content_type = "text/markdown"
+    else:
+        raise HTTPException(status_code=400, detail="Only markdown (.md) and PDF (.pdf) files are allowed")
+    
+    # Validate content type
+    if file.content_type not in (content_type, "text/plain"):
+        if not (file_ext == ".pdf" and file.content_type == "application/pdf"):
+            raise HTTPException(status_code=400, detail="Only markdown (.md) and PDF (.pdf) files are allowed")
 
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_BYTES:
@@ -52,14 +62,23 @@ async def upload(file: UploadFile = File(...), visibility: str = Form(DEFAULT_VI
     else:
         upload_dir = get_upload_dir()
         upload_dir.mkdir(parents=True, exist_ok=True)
-        dest = upload_dir / f"{uuid.uuid4()}{Path(filename).suffix or '.md'}"
+        dest = upload_dir / f"{uuid.uuid4()}{file_ext}"
         dest.write_bytes(contents)
         doc_id = await insert_document(filename, str(dest), checksum)
 
     job_id = await insert_ingestion_job(doc_id)
 
     try:
-        chunks = await ingest_file(str(dest), doc_id, filename, visibility)
+        # Extract text from PDF if needed
+        if file_ext == ".pdf":
+            extracted_text = extract_text_from_pdf(contents)
+            # Create a temporary markdown file for ingestion
+            temp_dest = dest.parent / f"{dest.stem}.md"
+            temp_dest.write_text(extracted_text, encoding="utf-8")
+            chunks = await ingest_file(str(temp_dest), doc_id, filename, visibility)
+        else:
+            chunks = await ingest_file(str(dest), doc_id, filename, visibility)
+            
         await update_job_succeeded(job_id)
         return {
             "documentId": doc_id,

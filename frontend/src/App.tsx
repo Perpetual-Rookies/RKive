@@ -284,8 +284,9 @@ export default function App() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".md")) {
-      setUploadStatus("Please choose a .md file");
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".md") && !name.endsWith(".pdf")) {
+      setUploadStatus("Please choose a .md or .pdf file");
       return;
     }
     setUploadStatus("Uploading…");
@@ -366,7 +367,7 @@ export default function App() {
         <section className="sidebar-section">
           <div className="section-heading">
             <span>Document upload</span>
-            <span className="helper-chip">Markdown</span>
+            <span className="helper-chip">Markdown, PDF</span>
           </div>
           <p className="section-copy">
             Upload knowledge content and choose the visibility scope before ingesting.
@@ -388,12 +389,12 @@ export default function App() {
           </select>
 
           <label className="upload-button" htmlFor="document-upload">
-            Choose markdown
+            Choose document
           </label>
           <input
             id="document-upload"
             type="file"
-            accept=".md,text/markdown"
+            accept=".md,.pdf,text/markdown,application/pdf"
             className="file-input"
             onChange={onUpload}
           />

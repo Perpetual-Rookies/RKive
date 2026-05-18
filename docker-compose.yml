@@ -20,7 +20,7 @@ services:
     expose:
       - "6333"
   ollama:
-    image: ollama/ollama:0.24.0-rc1-rocm
+    image: ollama/ollama:latest
     container_name: ollama
     ports:
       - "11434:11434"
