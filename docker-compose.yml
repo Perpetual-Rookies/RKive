@@ -19,32 +19,39 @@ services:
       - qdrant_data:/qdrant/storage
     expose:
       - "6333"
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    environment:
+      # CRITICAL: Tells Ollama to listen for connections from other containers, not just localhost
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama_data:/root/.ollama
+    # Note: You do NOT need a 'ports' block here unless you want your laptop 
+    # to access Ollama directly. Leaving 'ports' out keeps it securely private 
+    # to your Docker network.
 
   api:
     build:
       context: .
       dockerfile: deploy/Dockerfile.api
+    env_file:
+      - .env
     ports:
       - "3001:3001"
-    environment:
-      DATABASE_URL: postgresql://rkive:rkive@postgres:5432/rkive
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-org-default}
-      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2}
-      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
-      EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
-      PORT: "3001"
-      UPLOAD_DIR: /data/uploads
     volumes:
       - upload_data:/data/uploads
+      - ./backend:/app
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+        - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      ollama:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:3001/health"]
@@ -58,7 +65,11 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.web
     ports:
-      - "8080:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf
+      - /etc/letsencrypt/live/rkive.warool.com/fullchain.pem:/ssl/fullchain.pem
+      - /etc/letsencrypt/live/rkive.warool.com/privkey.pem:/ssl/privkey.pem
     depends_on:
       api:
         condition: service_healthy
@@ -67,3 +78,4 @@ volumes:
   pgdata:
   qdrant_data:
   upload_data:
+  ollama_data:
