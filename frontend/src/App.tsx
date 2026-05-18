@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
 import Files from "./Files";
 import rsystemsLogo from "./assets/rsystems-logo-white.svg";
 
 type Role = "user" | "assistant" | "system";
-
 type AppRole = "Standard Employee" | "Sales Representative";
-
 type Visibility = "Org Level (Public)" | "Sales Project (Private)";
 
 type Citation = {
@@ -25,11 +22,24 @@ type ChatMessage = {
   citations?: Citation[];
 };
 
-const ROLE_OPTIONS: AppRole[] = ["Standard Employee", "Sales Representative"];
+type DocumentInfo = {
+  id: string;
+  filename: string;
+  created_at: string | null;
+  file_type: "Markdown" | "PDF";
+  visibility: string;
+};
 
+const ROLE_OPTIONS: AppRole[] = ["Standard Employee", "Sales Representative"];
 const VISIBILITY_OPTIONS: Visibility[] = [
   "Org Level (Public)",
   "Sales Project (Private)",
+];
+
+const QUICK_PROMPTS = [
+  "Summarize our customer support policy.",
+  "What service levels are defined?",
+  "Compare the company overview and case studies.",
 ];
 
 function apiBase(): string {
@@ -48,10 +58,7 @@ function renderInlineMarkdown(text: string): ReactNode[] {
 }
 
 function renderAssistantContent(content: string): ReactNode {
-  const lines = content
-    .split("\n")
-    .map((line) => line.trimEnd());
-
+  const lines = content.split("\n").map((line) => line.trimEnd());
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
 
@@ -78,9 +85,7 @@ function renderAssistantContent(content: string): ReactNode {
 
     flushList();
 
-    if (!trimmed) {
-      return;
-    }
+    if (!trimmed) return;
 
     nodes.push(
       <p key={`p-${nodes.length}`} className="message-paragraph">
@@ -91,18 +96,36 @@ function renderAssistantContent(content: string): ReactNode {
 
   flushList();
 
-  if (nodes.length === 0) {
-    return content;
-  }
+  return nodes.length === 0 ? content : nodes;
+}
 
-  return nodes;
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "Unknown";
+  return new Date(dateStr).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function roleDescription(role: AppRole): string {
+  return role === "Sales Representative"
+    ? "Access to org-wide and sales-private content."
+    : "Access to org-wide public content only.";
+}
+
+function roleScope(role: AppRole): string {
+  return role === "Sales Representative"
+    ? "Org knowledge + sales-private sources"
+    : "Org-level public sources only";
 }
 
 export default function App() {
   const [page, setPage] = useState<"chat" | "files">("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [documents, setDocuments] = useState<DocumentInfo[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
   const [input, setInput] = useState("");
-  const connected = true;
   const [busy, setBusy] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -111,6 +134,27 @@ export default function App() {
   const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
   const assistantIdRef = useRef<string | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
+  const connected = true;
+
+  const loadDocuments = useCallback(async () => {
+    try {
+      setDocumentsLoading(true);
+      const res = await fetch(`${apiBase()}/api/documents`);
+      if (!res.ok) {
+        throw new Error(`Failed to load documents (${res.status})`);
+      }
+      const data = (await res.json()) as { documents?: DocumentInfo[] };
+      setDocuments(data.documents ?? []);
+    } catch {
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -133,6 +177,7 @@ export default function App() {
   useEffect(() => {
     if (!conversationId || messages.length > 0) return;
     let active = true;
+
     const loadHistory = async () => {
       setHistoryLoading(true);
       try {
@@ -140,35 +185,38 @@ export default function App() {
         if (!res.ok) {
           throw new Error(`Failed to load conversation (${res.status})`);
         }
-        const data = (await res.json()) as { messages?: Array<{ role: Role; content: string }> };
+        const data = (await res.json()) as {
+          messages?: Array<{ role: Role; content: string }>;
+        };
         if (!active) return;
-        const restored = (data.messages ?? []).map((msg) => ({
-          id: crypto.randomUUID(),
-          role: msg.role,
-          content: msg.content,
-          streaming: false,
-        }));
-        setMessages(restored);
+        setMessages(
+          (data.messages ?? []).map((msg) => ({
+            id: crypto.randomUUID(),
+            role: msg.role,
+            content: msg.content,
+            streaming: false,
+          })),
+        );
       } catch (err) {
-        if (active) {
-          setMessages((prev) =>
-            prev.length === 0
-              ? [
-                  {
-                    id: crypto.randomUUID(),
-                    role: "assistant",
-                    content: err instanceof Error ? err.message : String(err),
-                  },
-                ]
-              : prev,
-          );
-        }
+        if (!active) return;
+        setMessages((prev) =>
+          prev.length === 0
+            ? [
+                {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: err instanceof Error ? err.message : String(err),
+                },
+              ]
+            : prev,
+        );
       } finally {
         if (active) {
           setHistoryLoading(false);
         }
       }
     };
+
     void loadHistory();
     return () => {
       active = false;
@@ -178,10 +226,7 @@ export default function App() {
   useEffect(() => {
     const chatList = chatListRef.current;
     if (!chatList) return;
-    chatList.scrollTo({
-      top: chatList.scrollHeight,
-      behavior: "smooth",
-    });
+    chatList.scrollTo({ top: chatList.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const handleStreamMessage = useCallback((msg: Record<string, unknown>) => {
@@ -189,26 +234,26 @@ export default function App() {
       setConversationId(msg.id);
       return;
     }
+
     if (msg.type === "token" && typeof msg.text === "string") {
       const aid = assistantIdRef.current;
       if (!aid) return;
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aid
-            ? { ...m, content: m.content + msg.text, streaming: true }
-            : m,
+        prev.map((message) =>
+          message.id === aid
+            ? { ...message, content: message.content + msg.text, streaming: true }
+            : message,
         ),
       );
       return;
     }
+
     if (msg.type === "citations") {
       const aid = assistantIdRef.current;
       const rawCitations = Array.isArray(msg.citations)
         ? msg.citations
             .map((citation) => {
-              if (!citation || typeof citation !== "object") {
-                return null;
-              }
+              if (!citation || typeof citation !== "object") return null;
               const record = citation as Record<string, unknown>;
               const documentId =
                 typeof record.documentId === "string" ? record.documentId : "";
@@ -219,9 +264,7 @@ export default function App() {
               const score =
                 typeof record.score === "number" ? record.score : Number(record.score ?? 0);
 
-              if (!documentId && !sourcePath) {
-                return null;
-              }
+              if (!documentId && !sourcePath) return null;
 
               return {
                 documentId,
@@ -246,31 +289,33 @@ export default function App() {
           .values(),
       );
 
-      if (aid) {
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === aid ? { ...message, citations } : message,
-          ),
-        );
-      }
+      if (!aid) return;
+      setMessages((prev) =>
+        prev.map((message) => (message.id === aid ? { ...message, citations } : message)),
+      );
       return;
     }
+
     if (msg.type === "done") {
       const aid = assistantIdRef.current;
       assistantIdRef.current = null;
       if (aid) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === aid ? { ...m, streaming: false } : m)),
+          prev.map((message) =>
+            message.id === aid ? { ...message, streaming: false } : message,
+          ),
         );
       }
       setBusy(false);
       return;
     }
+
     if (msg.type === "error") {
       const aid = assistantIdRef.current;
       assistantIdRef.current = null;
       setBusy(false);
       const text = typeof msg.message === "string" ? msg.message : "Unknown error";
+
       if (aid) {
         setMessages((prev) =>
           prev.map((message) =>
@@ -279,16 +324,17 @@ export default function App() {
               : message,
           ),
         );
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: `Error: ${text}`,
-          },
-        ]);
+        return;
       }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Error: ${text}`,
+        },
+      ]);
     }
   }, []);
 
@@ -298,14 +344,15 @@ export default function App() {
 
     setInput("");
     setBusy(true);
+
     const userId = crypto.randomUUID();
-    const asstId = crypto.randomUUID();
-    assistantIdRef.current = asstId;
+    const assistantId = crypto.randomUUID();
+    assistantIdRef.current = assistantId;
 
     setMessages((prev) => [
       ...prev,
       { id: userId, role: "user", content: text },
-      { id: asstId, role: "assistant", content: "", streaming: true },
+      { id: assistantId, role: "assistant", content: "", streaming: true },
     ]);
 
     try {
@@ -334,20 +381,21 @@ export default function App() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let boundary = buffer.indexOf("\n\n");
+
         while (boundary !== -1) {
           const chunk = buffer.slice(0, boundary).trim();
           buffer = buffer.slice(boundary + 2);
           const lines = chunk.split("\n");
           const dataLine = lines.find((line) => line.startsWith("data: "));
+
           if (dataLine) {
-            const payload = dataLine.slice(6);
             try {
-              const msg = JSON.parse(payload) as Record<string, unknown>;
-              handleStreamMessage(msg);
+              handleStreamMessage(JSON.parse(dataLine.slice(6)) as Record<string, unknown>);
             } catch {
-              /* ignore */
+              // Ignore malformed stream chunks.
             }
           }
+
           boundary = buffer.indexOf("\n\n");
         }
       }
@@ -359,19 +407,22 @@ export default function App() {
     }
   }, [busy, conversationId, handleStreamMessage, input, role, visibility]);
 
-  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+  const onUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
+
     const name = file.name.toLowerCase();
     if (!name.endsWith(".md") && !name.endsWith(".pdf")) {
-      setUploadStatus("Please choose a .md or .pdf file");
+      setUploadStatus("Please choose a .md or .pdf file.");
       return;
     }
-    setUploadStatus("Uploading…");
+
+    setUploadStatus("Uploading and indexing...");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("visibility", visibility);
+
     try {
       const res = await fetch(`${apiBase()}/api/upload`, {
         method: "POST",
@@ -379,18 +430,34 @@ export default function App() {
       });
       const data = (await res.json()) as Record<string, unknown>;
       if (!res.ok) {
-        setUploadStatus(
-          typeof data.error === "string" ? data.error : `HTTP ${res.status}`,
-        );
+        const detail =
+          typeof data.error === "string"
+            ? data.error
+            : typeof data.detail === "string"
+              ? data.detail
+              : `HTTP ${res.status}`;
+        setUploadStatus(detail);
         return;
       }
-      const chunks = data.chunks;
-      setUploadStatus(
-        `Ingested OK (${typeof chunks === "number" ? chunks : "?"} chunks)`,
-      );
+
+      const chunks = typeof data.chunks === "number" ? data.chunks : "?";
+      const deduplicated = data.deduplicated === true ? " Existing file refreshed." : "";
+      setUploadStatus(`Indexed ${chunks} chunks.${deduplicated}`);
+      void loadDocuments();
     } catch (err) {
       setUploadStatus(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void sendChat();
+    }
+  };
+
+  const applyPrompt = (prompt: string) => {
+    setInput(prompt);
   };
 
   const formatCitationName = (citation: Citation) => {
@@ -402,8 +469,29 @@ export default function App() {
 
   const formatCitationScore = (score: number) => {
     if (!Number.isFinite(score)) return "0%";
-    return `${Math.max(0, Math.min(100, Math.round(score * 100)))}%`;
+    return `${Math.max(0, Math.min(100, Math.round(score * 100)))}% match`;
   };
+
+  const documentStats = useMemo(() => {
+    const publicDocs = documents.filter((doc) => doc.visibility === VISIBILITY_OPTIONS[0]).length;
+    const privateDocs = documents.filter((doc) => doc.visibility === VISIBILITY_OPTIONS[1]).length;
+    const pdfs = documents.filter((doc) => doc.file_type === "PDF").length;
+    const markdown = documents.length - pdfs;
+
+    return { publicDocs, privateDocs, pdfs, markdown };
+  }, [documents]);
+
+  const recentDocuments = useMemo(
+    () =>
+      [...documents]
+        .sort((a, b) => {
+          const left = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const right = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return right - left;
+        })
+        .slice(0, 3),
+    [documents],
+  );
 
   if (page === "files") {
     return (
@@ -415,23 +503,23 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="workspace-sidebar">
         <div className="brand-block">
           <div className="brand-mark brand-logo">
             <img src={rsystemsLogo} alt="Rsystems" />
           </div>
           <div>
             <h1 className="brand-title">RKive</h1>
-            <p className="brand-copy">Grounded internal knowledge chat</p>
+            <p className="brand-copy">Internal knowledge assistant</p>
           </div>
         </div>
 
-        <section className="sidebar-section">
+        <section className="sidebar-card">
           <div className="section-heading">
-            <span>Logged in as</span>
-            <span className={`status-pill ${connected ? "is-online" : "is-offline"}`}>
+            <span>Profile</span>
+            <span className="status-pill is-online">
               <span className="status-dot" />
-              {connected ? "Connected" : "Disconnected"}
+              {connected ? "Connected" : "Offline"}
             </span>
           </div>
           <label className="field-label" htmlFor="role-select">
@@ -441,7 +529,7 @@ export default function App() {
             id="role-select"
             className="select"
             value={role}
-            onChange={(e) => setRole(e.target.value as AppRole)}
+            onChange={(event) => setRole(event.target.value as AppRole)}
           >
             {ROLE_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -449,18 +537,20 @@ export default function App() {
               </option>
             ))}
           </select>
+          <p className="section-copy">{roleDescription(role)}</p>
+          <div className="scope-banner">
+            <span className="scope-label">Scope</span>
+            <strong>{roleScope(role)}</strong>
+          </div>
         </section>
 
-        <div className="sidebar-divider" />
-
-        <section className="sidebar-section">
+        <section className="sidebar-card">
           <div className="section-heading">
-            <span>Document upload</span>
-            <span className="helper-chip">Markdown, PDF</span>
+            <span>Upload</span>
+            <button className="link-button" onClick={() => setPage("files")} type="button">
+              Documents
+            </button>
           </div>
-          <p className="section-copy">
-            Upload knowledge content and choose the visibility scope before ingesting.
-          </p>
           <label className="field-label" htmlFor="visibility-select">
             Visibility
           </label>
@@ -468,7 +558,7 @@ export default function App() {
             id="visibility-select"
             className="select"
             value={visibility}
-            onChange={(e) => setVisibility(e.target.value as Visibility)}
+            onChange={(event) => setVisibility(event.target.value as Visibility)}
           >
             {VISIBILITY_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -476,9 +566,8 @@ export default function App() {
               </option>
             ))}
           </select>
-
           <label className="upload-button" htmlFor="document-upload">
-            Choose document
+            Upload knowledge document
           </label>
           <input
             id="document-upload"
@@ -487,52 +576,118 @@ export default function App() {
             className="file-input"
             onChange={onUpload}
           />
-
           {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
-          <p className="upload-note">Files are sent with the selected visibility.</p>
         </section>
 
-        <div className="sidebar-divider" />
-
-        <section className="sidebar-section">
-          <button 
-            className="files-nav-button"
-            onClick={() => setPage("files")}
-          >
-            📁 Manage Documents
-          </button>
-          <p className="section-copy">
-            View, organize, and delete your uploaded documents.
-          </p>
+        <section className="sidebar-card">
+          <div className="section-heading">
+            <span>Library</span>
+            <span className="helper-chip">{documentsLoading ? "Syncing" : `${documents.length} docs`}</span>
+          </div>
+          <div className="mini-stat-grid">
+            <div className="mini-stat">
+              <span className="mini-stat-value">{documentStats.publicDocs}</span>
+              <span className="mini-stat-label">public</span>
+            </div>
+            <div className="mini-stat">
+              <span className="mini-stat-value">{documentStats.privateDocs}</span>
+              <span className="mini-stat-label">private</span>
+            </div>
+            <div className="mini-stat">
+              <span className="mini-stat-value">{documentStats.markdown}</span>
+              <span className="mini-stat-label">markdown</span>
+            </div>
+            <div className="mini-stat">
+              <span className="mini-stat-value">{documentStats.pdfs}</span>
+              <span className="mini-stat-label">pdf</span>
+            </div>
+          </div>
+          <div className="recent-list">
+            {recentDocuments.length === 0 ? (
+              <p className="empty-copy">No indexed documents yet.</p>
+            ) : (
+              recentDocuments.map((doc) => (
+                <div key={doc.id} className="recent-item">
+                  <div>
+                    <p className="recent-item-title">{doc.filename}</p>
+                    <p className="recent-item-meta">
+                      {doc.file_type} · {doc.visibility}
+                    </p>
+                  </div>
+                  <span className="recent-item-date">{formatDate(doc.created_at)}</span>
+                </div>
+              ))
+            )}
+          </div>
         </section>
       </aside>
 
-      <main className="panel">
-        <header className="panel-topbar">
-          <div>
-            <p className="eyebrow">Knowledge workspace</p>
-            <h2>Ask RKive about uploaded documents</h2>
+      <main className="workspace-main">
+        <header className="workspace-header">
+          <div className="header-copy">
+            <p className="eyebrow">Chat</p>
+            <h2>Ask questions against your indexed documents.</h2>
           </div>
-          <p className="panel-meta mono">
-            {conversationId ? `Conversation ${conversationId.slice(0, 8)}` : "New conversation"}
-          </p>
+          <div className="header-panel">
+            <div className="header-panel-row">
+              <span className="panel-label">Conversation</span>
+              <span className="panel-value mono">
+                {conversationId ? conversationId.slice(0, 8) : "New session"}
+              </span>
+            </div>
+            <div className="header-panel-row">
+              <span className="panel-label">Visibility</span>
+              <span className="panel-value">{visibility}</span>
+            </div>
+            <div className="header-panel-row">
+              <span className="panel-label">Sources</span>
+              <span className="panel-value">Cited</span>
+            </div>
+          </div>
         </header>
+
+        <section className="prompt-bar">
+          {QUICK_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className="prompt-chip"
+              onClick={() => applyPrompt(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
+        </section>
 
         <section className="chat-shell">
           <div ref={chatListRef} className="chat-list">
             {messages.length === 0 && !historyLoading && (
-              <div className="empty-state">
-                <p className="empty-title">Ready when you are</p>
-                <p className="empty-copy">
-                  Upload a document on the left, then ask a grounded question here.
-                </p>
+              <div className="welcome-panel">
+                <div className="welcome-hero">
+                  <h3>Start with a document, then ask a precise question.</h3>
+                  <p className="empty-copy">Answers are generated only from indexed sources.</p>
+                </div>
+                <div className="welcome-grid">
+                  <div className="welcome-card">
+                    <strong>Upload</strong>
+                    <p>Add markdown or PDF files.</p>
+                  </div>
+                  <div className="welcome-card">
+                    <strong>Ask</strong>
+                    <p>Query the indexed knowledge base.</p>
+                  </div>
+                  <div className="welcome-card">
+                    <strong>Verify</strong>
+                    <p>Open citations to inspect source files.</p>
+                  </div>
+                </div>
               </div>
             )}
 
             {messages.length === 0 && historyLoading && (
               <div className="empty-state">
                 <p className="empty-title">Loading conversation...</p>
-                <p className="empty-copy">Restoring your recent messages.</p>
+                <p className="empty-copy">Restoring recent grounded answers and citations.</p>
               </div>
             )}
 
@@ -547,8 +702,12 @@ export default function App() {
                   className={`message-row ${isUser ? "is-user" : "is-assistant"}`}
                 >
                   <div className={`message-card ${isUser ? "is-user" : "is-assistant"}`}>
-                    {isAssistant && <span className="message-label">RKive</span>}
-                    {isUser && <span className="message-label">You</span>}
+                    <div className="message-header">
+                      <span className="message-label">{isUser ? "You" : "RKive"}</span>
+                      <span className="message-subtitle">
+                        {isUser ? "Question submitted" : "Grounded response"}
+                      </span>
+                    </div>
                     <div className="message-content">
                       {isAssistant ? renderAssistantContent(message.content) : message.content}
                       {message.streaming && (
@@ -561,19 +720,28 @@ export default function App() {
                     </div>
 
                     {isAssistant && !message.streaming && citations.length > 0 && (
-                      <div className="citation-row">
-                        {citations.map((citation, index) => (
-                          <a
-                            key={`${citation.documentId}-${index}`}
-                            href={`${apiBase()}/api/documents/${citation.documentId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="citation-pill"
-                          >
-                            <span className="citation-name">[{index + 1}] {formatCitationName(citation)}</span>
-                            <span className="citation-score">({formatCitationScore(citation.score)})</span>
-                          </a>
-                        ))}
+                      <div className="citation-block">
+                        <div className="citation-block-header">
+                          <span>Sources</span>
+                          <span>{citations.length} attached</span>
+                        </div>
+                        <div className="citation-row">
+                          {citations.map((citation, index) => (
+                            <a
+                              key={`${citation.documentId}-${index}`}
+                              href={`${apiBase()}/api/documents/${citation.documentId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="citation-pill"
+                            >
+                              <span className="citation-index">[{index + 1}]</span>
+                              <span className="citation-name">{formatCitationName(citation)}</span>
+                              <span className="citation-score">
+                                {formatCitationScore(citation.score)}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -584,31 +752,36 @@ export default function App() {
 
           <form
             className="composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendChat();
+            onSubmit={(event) => {
+              event.preventDefault();
+              void sendChat();
             }}
           >
-            <input
-              type="text"
-              value={input}
-              disabled={!connected || busy}
-              placeholder={connected ? "Ask something grounded…" : "Connecting to RKive…"}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendChat();
+            <div className="composer-frame">
+              <textarea
+                value={input}
+                disabled={!connected || busy}
+                placeholder={
+                  connected
+                    ? "Ask a grounded question about the indexed knowledge base..."
+                    : "Connecting to RKive..."
                 }
-              }}
-              className="composer-input"
-            />
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={onComposerKeyDown}
+                className="composer-input composer-textarea"
+                rows={3}
+              />
+              <div className="composer-meta">
+                <span>Enter to send</span>
+                <span>Shift + Enter for a new line</span>
+              </div>
+            </div>
             <button
               type="submit"
               className="composer-button"
               disabled={!connected || busy || !input.trim()}
             >
-              Send
+              {busy ? "Thinking..." : "Send question"}
             </button>
           </form>
         </section>
