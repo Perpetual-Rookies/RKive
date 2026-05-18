@@ -2,6 +2,7 @@
 
 up:
 	docker compose up --build
+	docker compose exec ollama ollama run nomic-embed-text
 
 down:
 	docker compose down

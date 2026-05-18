@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from ollama import AsyncClient
 
-from rkive.config import get_llm_chat_model, get_embedding_model, get_ollama_base, get_llm_api_key
+from rkive.config import get_llm_chat_model, get_embedding_model, get_ollama_base, get_embedder_base, get_llm_api_key
 
 
 def _get_client() -> AsyncClient:
@@ -14,9 +14,17 @@ def _get_client() -> AsyncClient:
     return AsyncClient(host=get_ollama_base(), headers=headers)
 
 
+def _get_embedder_client() -> AsyncClient:
+    headers = {}
+    api_key = get_llm_api_key()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return AsyncClient(host=get_embedder_base(), headers=headers)
+
+
 async def embed(text: str) -> list[float]:
     """Return an embedding vector for *text* via the Ollama embeddings endpoint."""
-    client = _get_client()
+    client = _get_embedder_client()
     # Using the standard embeddings endpoint
     resp = await client.embeddings(model=get_embedding_model(), prompt=text)
     

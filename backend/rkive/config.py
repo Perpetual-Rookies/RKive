@@ -14,6 +14,7 @@ class Settings:
     llm_chat_model: str = "gemini-2.5-flash"
     embedding_model: str = "text-embedding-004"
     ollama_base_url: str = "http://host.docker.internal:11434"
+    embedder_base_url: str = "http://host.docker.internal:11434"
     qdrant_url: str = ""
     qdrant_collection: str = "org-default"
     qdrant_api_key: str | None = None
@@ -50,7 +51,8 @@ def get_settings() -> Settings:
         llm_api_key=os.environ.get("LLM_API_KEY") or None,
         llm_chat_model=os.environ.get("LLM_CHAT_MODEL", "gemini-2.5-flash"),
         embedding_model=os.environ.get("EMBEDDING_MODEL", "text-embedding-004"),
-        ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+        ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "https://api.ollama.com"),
+        embedder_base_url=os.environ.get("EMBEDDER_BASE_URL", "http://host.docker.internal:11434"),
         qdrant_url=qdrant_url,
         qdrant_collection=os.environ.get("QDRANT_COLLECTION", "org-default"),
         qdrant_api_key=os.environ.get("QDRANT_API_KEY") or None,
@@ -81,6 +83,9 @@ def get_embedding_model() -> str:
 
 def get_ollama_base() -> str:
     return get_settings().ollama_base_url
+
+def get_embedder_base() -> str:
+    return get_settings().embedder_base_url
 
 
 def get_qdrant_url() -> str:
