@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, ChangeEvent } from "react";
 import type { ReactNode } from "react";
+import rsystemsLogo from "./assets/rsystems-logo-white.svg";
 
 type FileType = "Markdown" | "PDF";
 
@@ -8,18 +9,33 @@ type DocumentInfo = {
   filename: string;
   created_at: string | null;
   file_type: FileType;
+  visibility: string;
 };
+
+type FilesProps = {
+  onBack?: () => void;
+};
+
+type Visibility = "Org Level (Public)" | "Sales Project (Private)";
+
+const VISIBILITY_OPTIONS: Visibility[] = [
+  "Org Level (Public)",
+  "Sales Project (Private)",
+];
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE ?? "";
 }
 
-export default function Files() {
+export default function Files({ onBack }: FilesProps) {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<Visibility>(
+    VISIBILITY_OPTIONS[0]
+  );
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -53,11 +69,11 @@ export default function Files() {
     }
 
     setUploading(true);
-    setUploadStatus("Uploading…");
+    setUploadStatus("Uploading...");
 
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("visibility", "Org Level (Public)");
+    fd.append("visibility", visibility);
 
     try {
       const res = await fetch(`${apiBase()}/api/upload`, {
@@ -103,22 +119,41 @@ export default function Files() {
     }
   };
 
-  const groupByType = (): { markdown: DocumentInfo[]; pdf: DocumentInfo[] } => {
-    const markdown: DocumentInfo[] = [];
-    const pdf: DocumentInfo[] = [];
-
+  const groupByVisibility = (): Array<{
+    visibility: string;
+    markdown: DocumentInfo[];
+    pdf: DocumentInfo[];
+  }> => {
+    const groups = new Map<string, { markdown: DocumentInfo[]; pdf: DocumentInfo[] }>();
     documents.forEach((doc) => {
+      const key = doc.visibility || VISIBILITY_OPTIONS[0];
+      const group = groups.get(key) ?? { markdown: [], pdf: [] };
       if (doc.file_type === "PDF") {
-        pdf.push(doc);
+        group.pdf.push(doc);
       } else {
-        markdown.push(doc);
+        group.markdown.push(doc);
       }
+      groups.set(key, group);
     });
 
-    return { markdown, pdf };
+    const known = VISIBILITY_OPTIONS.map((visibility) => ({
+      visibility,
+      ...((groups.get(visibility) ?? { markdown: [], pdf: [] }) as {
+        markdown: DocumentInfo[];
+        pdf: DocumentInfo[];
+      }),
+    }));
+
+    const extras = Array.from(groups.entries())
+      .filter(([visibility]) => !VISIBILITY_OPTIONS.includes(visibility as Visibility))
+      .map(([visibility, group]) => ({ visibility, ...group }));
+
+    return [...known, ...extras].filter(
+      (group) => group.markdown.length + group.pdf.length > 0
+    );
   };
 
-  const { markdown, pdf } = groupByType();
+  const visibilityGroups = groupByVisibility();
 
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return "Unknown";
@@ -146,7 +181,7 @@ export default function Files() {
         onClick={() => onDelete(doc.id)}
         disabled={deleting === doc.id}
       >
-        {deleting === doc.id ? "Deleting…" : "Delete"}
+        {deleting === doc.id ? "Deleting..." : "Delete"}
       </button>
     </div>
   );
@@ -166,20 +201,38 @@ export default function Files() {
     <div className="files-page">
       <aside className="files-sidebar">
         <div className="brand-block">
-          <div className="brand-mark">RK</div>
+          <div className="brand-mark brand-logo">
+            <img src={rsystemsLogo} alt="Rsystems" />
+          </div>
           <div>
             <h1 className="brand-title">RKive</h1>
-            <p className="brand-copy">Document Management</p>
+            <p className="brand-copy">Document management</p>
           </div>
         </div>
 
         <section className="files-sidebar-section">
           <div className="files-section-heading">
-            <span>Upload Documents</span>
+            <span>Upload documents</span>
           </div>
           <p className="files-section-copy">
             Upload markdown or PDF documents to your knowledge base.
           </p>
+
+          <label className="field-label" htmlFor="files-visibility">
+            Visibility
+          </label>
+          <select
+            id="files-visibility"
+            className="select"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as Visibility)}
+          >
+            {VISIBILITY_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
 
           <label className="files-upload-label" htmlFor="file-upload">
             Choose document
@@ -205,6 +258,14 @@ export default function Files() {
       </aside>
 
       <main className="files-main">
+        <div className="files-topbar">
+          {onBack && (
+            <button className="back-button" onClick={onBack} type="button">
+              Back to chat
+            </button>
+          )}
+          <div className="files-topbar-meta">Knowledge base</div>
+        </div>
         <header className="files-header">
           <h1>Your Documents</h1>
           <p className="header-subtitle">
@@ -213,15 +274,27 @@ export default function Files() {
         </header>
 
         {loading ? (
-          <div className="loading">Loading documents…</div>
+          <div className="loading">Loading documents...</div>
         ) : documents.length === 0 ? (
           <div className="empty-state">
             <p>No documents yet. Upload one to get started!</p>
           </div>
         ) : (
           <div className="documents-container">
-            {renderCategory("Markdown Documents", markdown)}
-            {renderCategory("PDF Documents", pdf)}
+            {visibilityGroups.map((group) => (
+              <section key={group.visibility} className="visibility-group">
+                <div className="visibility-header">
+                  <h2 className="visibility-title">{group.visibility}</h2>
+                  <span className="visibility-count">
+                    {group.markdown.length + group.pdf.length} docs
+                  </span>
+                </div>
+                <div className="visibility-body">
+                  {renderCategory("Markdown", group.markdown)}
+                  {renderCategory("PDF", group.pdf)}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </main>

@@ -11,11 +11,14 @@ from rkive.config import get_database_url
 
 
 async def run_migrations() -> None:
-    """Apply the init SQL migration idempotently (uses IF NOT EXISTS DDL)."""
-    sql_path = Path(__file__).parent.parent / "migrations" / "0000_init.sql"
-    sql = sql_path.read_text()
+    """Apply SQL migrations in order (each file should be idempotent)."""
+    migrations_dir = Path(__file__).parent.parent / "migrations"
+    migration_files = sorted(migrations_dir.glob("*.sql"))
+    if not migration_files:
+        return
     async with await psycopg.AsyncConnection.connect(get_database_url(), autocommit=True) as conn:
-        await conn.execute(sql)
+        for path in migration_files:
+            await conn.execute(path.read_text())
 
 
 class _Conn:

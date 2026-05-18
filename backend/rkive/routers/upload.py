@@ -17,6 +17,7 @@ from rkive.repositories.documents import (
     update_job_succeeded,
     list_all_documents,
     delete_document,
+    update_document_visibility,
 )
 from rkive.services.ingest import ingest_file
 from rkive.services.pdf import extract_text_from_pdf
@@ -62,12 +63,14 @@ async def upload(file: UploadFile = File(...), visibility: str = Form(DEFAULT_VI
     if existing_doc:
         doc_id = str(existing_doc["id"])
         dest = Path(str(existing_doc["storage_path"]))
+        if existing_doc.get("visibility") != visibility:
+            await update_document_visibility(doc_id, visibility)
     else:
         upload_dir = get_upload_dir()
         upload_dir.mkdir(parents=True, exist_ok=True)
         dest = upload_dir / f"{uuid.uuid4()}{file_ext}"
         dest.write_bytes(contents)
-        doc_id = await insert_document(filename, str(dest), checksum)
+        doc_id = await insert_document(filename, str(dest), checksum, visibility)
 
     job_id = await insert_ingestion_job(doc_id)
 
@@ -128,6 +131,7 @@ async def list_documents():
                 "filename": doc["filename"],
                 "created_at": doc["created_at"].isoformat() if doc["created_at"] else None,
                 "file_type": "PDF" if doc["filename"].lower().endswith(".pdf") else "Markdown",
+                "visibility": doc.get("visibility") or DEFAULT_VISIBILITY,
             }
             for doc in documents
         ]

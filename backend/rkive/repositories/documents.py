@@ -3,16 +3,18 @@
 from rkive.db import get_conn
 
 
-async def insert_document(filename: str, storage_path: str, checksum: str) -> str:
+async def insert_document(
+    filename: str, storage_path: str, checksum: str, visibility: str
+) -> str:
     """Insert a new document row and return its UUID."""
     async with get_conn() as conn:
         row = await conn.fetchone(
             """
-            INSERT INTO documents (id, filename, storage_path, checksum)
-            VALUES (gen_random_uuid(), %s, %s, %s)
+            INSERT INTO documents (id, filename, storage_path, checksum, visibility)
+            VALUES (gen_random_uuid(), %s, %s, %s, %s)
             RETURNING id
             """,
-            (filename, storage_path, checksum),
+            (filename, storage_path, checksum, visibility),
         )
     return str(row["id"])
 
@@ -21,7 +23,11 @@ async def get_document(doc_id: str) -> dict | None:
     """Retrieve a document by ID."""
     async with get_conn() as conn:
         row = await conn.fetchone_optional(
-            "SELECT id, filename, storage_path, checksum, created_at FROM documents WHERE id = %s",
+            """
+            SELECT id, filename, storage_path, checksum, created_at, visibility
+            FROM documents
+            WHERE id = %s
+            """,
             (doc_id,),
         )
     return dict(row) if row else None
@@ -32,7 +38,7 @@ async def get_document_by_checksum(checksum: str) -> dict | None:
     async with get_conn() as conn:
         row = await conn.fetchone_optional(
             """
-            SELECT id, filename, storage_path, checksum, created_at
+            SELECT id, filename, storage_path, checksum, created_at, visibility
             FROM documents
             WHERE checksum = %s
             ORDER BY created_at DESC
@@ -84,12 +90,21 @@ async def list_all_documents() -> list[dict]:
     async with get_conn() as conn:
         rows = await conn.fetchall(
             """
-            SELECT id, filename, storage_path, checksum, created_at
+            SELECT id, filename, storage_path, checksum, created_at, visibility
             FROM documents
             ORDER BY created_at DESC
             """,
         )
     return [dict(row) for row in rows]
+
+
+async def update_document_visibility(doc_id: str, visibility: str) -> None:
+    """Update a document's visibility label."""
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE documents SET visibility = %s WHERE id = %s",
+            (visibility, doc_id),
+        )
 
 
 async def delete_document(doc_id: str) -> bool:

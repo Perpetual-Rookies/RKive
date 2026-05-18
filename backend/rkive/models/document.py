@@ -12,6 +12,7 @@ class Document:
     checksum: str | None
     created_at: datetime | None = None
     created_by: str | None = None
+    visibility: str | None = None
 
 
 @dataclass

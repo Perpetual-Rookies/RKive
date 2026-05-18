@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { ReactNode } from "react";
 import Files from "./Files";
+import rsystemsLogo from "./assets/rsystems-logo-white.svg";
 
 type Role = "user" | "assistant" | "system";
 
@@ -331,14 +332,7 @@ export default function App() {
   if (page === "files") {
     return (
       <div className="app-wrapper">
-        <Files />
-        <button 
-          className="nav-button chat-nav"
-          onClick={() => setPage("chat")}
-          title="Back to Chat"
-        >
-          ← Chat
-        </button>
+        <Files onBack={() => setPage("chat")} />
       </div>
     );
   }
@@ -347,7 +341,9 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark">RK</div>
+          <div className="brand-mark brand-logo">
+            <img src={rsystemsLogo} alt="Rsystems" />
+          </div>
           <div>
             <h1 className="brand-title">RKive</h1>
             <p className="brand-copy">Grounded internal knowledge chat</p>
