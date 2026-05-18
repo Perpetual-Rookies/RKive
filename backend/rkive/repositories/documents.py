@@ -20,7 +20,7 @@ async def insert_document(filename: str, storage_path: str, checksum: str) -> st
 async def get_document(doc_id: str) -> dict | None:
     """Retrieve a document by ID."""
     async with get_conn() as conn:
-        row = await conn.fetchone(
+        row = await conn.fetchone_optional(
             "SELECT id, filename, storage_path, checksum, created_at FROM documents WHERE id = %s",
             (doc_id,),
         )
@@ -30,7 +30,7 @@ async def get_document(doc_id: str) -> dict | None:
 async def get_document_by_checksum(checksum: str) -> dict | None:
     """Retrieve a document by checksum."""
     async with get_conn() as conn:
-        row = await conn.fetchone(
+        row = await conn.fetchone_optional(
             """
             SELECT id, filename, storage_path, checksum, created_at
             FROM documents

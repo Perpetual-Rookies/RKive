@@ -33,14 +33,18 @@ class _Conn:
         await self._conn.execute(query, params)
         await self._conn.commit()
 
-    async def fetchone(self, query: str, params: tuple = ()) -> dict[str, Any]:
+    async def fetchone_optional(self, query: str, params: tuple = ()) -> dict[str, Any] | None:
         async with self._conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(query, params)
             row = await cur.fetchone()
             await self._conn.commit()
-            if row is None:
-                raise RuntimeError(f"Expected one row, got none for: {query!r}")
             return row  # type: ignore[return-value]
+
+    async def fetchone(self, query: str, params: tuple = ()) -> dict[str, Any]:
+        row = await self.fetchone_optional(query, params)
+        if row is None:
+            raise RuntimeError(f"Expected one row, got none for: {query!r}")
+        return row
 
 
 @asynccontextmanager

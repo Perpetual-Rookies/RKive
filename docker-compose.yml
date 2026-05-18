@@ -20,7 +20,7 @@ services:
     expose:
       - "6333"
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.24.0-rc1-rocm
     container_name: ollama
     ports:
       - "11434:11434"
@@ -43,6 +43,7 @@ services:
       - "3001:3001"
     volumes:
       - upload_data:/data/uploads
+      - ./backend:/app
     extra_hosts:
         - "host.docker.internal:host-gateway"
     depends_on:

@@ -1,8 +1,9 @@
 .PHONY: up down logs build dev-api
 
 up:
+	docker compose up -d ollama
+	docker compose exec ollama ollama run nomic-embed-text 'test'
 	docker compose up --build
-	docker compose exec ollama ollama run nomic-embed-text
 
 down:
 	docker compose down
