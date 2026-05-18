@@ -20,7 +20,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from rkive.config import get_embedding_dim
 from rkive.models.chat import Citation
-from rkive.repositories.conversations import create_conversation, insert_message
+from rkive.repositories.conversations import create_conversation, insert_message, list_recent_messages
+from rkive.services.followup import build_retrieval_query
 from rkive.services.llm import chat_stream, embed
 from rkive.services.qdrant import ensure_collection, search_similar
 from rkive.services.rerank import rerank_hits
@@ -164,14 +165,16 @@ async def chat(ws: WebSocket):
                     extra={"conversation_id": conversation_id},
                 )
 
+            history = await list_recent_messages(conversation_id, limit=6)
             await insert_message(conversation_id, "user", question)
 
             # ── embed + retrieve ──────────────────────────────────────────────
             try:
+                retrieval_query = build_retrieval_query(question, history)
                 # The query uses the search_query prefix because some embedding
                 # models work better when document and query embeddings are
                 # labelled with their different roles.
-                vector = await embed(f"search_query: {question}")
+                vector = await embed(f"search_query: {retrieval_query}")
             except Exception as exc:
                 await ws.send_text(_msg(type="error", message=str(exc)))
                 log.exception(
