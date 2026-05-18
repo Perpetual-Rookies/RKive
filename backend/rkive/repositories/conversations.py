@@ -41,3 +41,24 @@ async def list_recent_messages(conversation_id: str, limit: int = 5) -> list[dic
             (conversation_id, limit),
         )
     return list(row["messages"])
+
+
+async def list_messages(conversation_id: str) -> list[dict]:
+    """Return all messages for a conversation in chronological order."""
+    async with get_conn() as conn:
+        row = await conn.fetchone(
+            """
+            SELECT COALESCE(
+                json_agg(item ORDER BY item.created_at),
+                '[]'::json
+            ) AS messages
+            FROM (
+                SELECT role, content, created_at
+                FROM messages
+                WHERE conversation_id = %s
+                ORDER BY created_at ASC
+            ) AS item
+            """,
+            (conversation_id,),
+        )
+    return list(row["messages"])

@@ -36,12 +36,6 @@ function apiBase(): string {
   return import.meta.env.VITE_API_BASE ?? "";
 }
 
-function wsUrl(): string {
-  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/ws`;
-}
-
 function renderInlineMarkdown(text: string): ReactNode[] {
   const parts = text.split(/(\*\*.*?\*\*)/g);
 
@@ -108,15 +102,78 @@ export default function App() {
   const [page, setPage] = useState<"chat" | "files">("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [connected, setConnected] = useState(false);
+  const connected = true;
   const [busy, setBusy] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [role, setRole] = useState<AppRole>(ROLE_OPTIONS[0]);
   const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
-  const wsRef = useRef<WebSocket | null>(null);
   const assistantIdRef = useRef<string | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const existing = params.get("conversation");
+    if (existing) {
+      setConversationId(existing);
+    }
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (conversationId) {
+      url.searchParams.set("conversation", conversationId);
+    } else {
+      url.searchParams.delete("conversation");
+    }
+    window.history.replaceState({}, "", url);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || messages.length > 0) return;
+    let active = true;
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const res = await fetch(`${apiBase()}/api/conversations/${conversationId}/messages`);
+        if (!res.ok) {
+          throw new Error(`Failed to load conversation (${res.status})`);
+        }
+        const data = (await res.json()) as { messages?: Array<{ role: Role; content: string }> };
+        if (!active) return;
+        const restored = (data.messages ?? []).map((msg) => ({
+          id: crypto.randomUUID(),
+          role: msg.role,
+          content: msg.content,
+          streaming: false,
+        }));
+        setMessages(restored);
+      } catch (err) {
+        if (active) {
+          setMessages((prev) =>
+            prev.length === 0
+              ? [
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant",
+                    content: err instanceof Error ? err.message : String(err),
+                  },
+                ]
+              : prev,
+          );
+        }
+      } finally {
+        if (active) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+    void loadHistory();
+    return () => {
+      active = false;
+    };
+  }, [conversationId, messages.length]);
 
   useEffect(() => {
     const chatList = chatListRef.current;
@@ -127,138 +184,117 @@ export default function App() {
     });
   }, [messages]);
 
-  useEffect(() => {
-    const ws = new WebSocket(wsUrl());
-    wsRef.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data as string) as Record<string, unknown>;
-        if (msg.type === "conversation" && typeof msg.id === "string") {
-          setConversationId(msg.id);
-          return;
-        }
-        if (msg.type === "token" && typeof msg.text === "string") {
-          const aid = assistantIdRef.current;
-          if (!aid) return;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aid
-                ? { ...m, content: m.content + msg.text, streaming: true }
-                : m,
-            ),
-          );
-          return;
-        }
-        if (msg.type === "citations") {
-          const aid = assistantIdRef.current;
-          const rawCitations = Array.isArray(msg.citations)
-            ? msg.citations
-                .map((citation) => {
-                  if (!citation || typeof citation !== "object") {
-                    return null;
-                  }
-                  const record = citation as Record<string, unknown>;
-                  const documentId =
-                    typeof record.documentId === "string" ? record.documentId : "";
-                  const sourcePath =
-                    typeof record.sourcePath === "string" ? record.sourcePath : "";
-                  const filename =
-                    typeof record.filename === "string" ? record.filename : "";
-                  const score =
-                    typeof record.score === "number" ? record.score : Number(record.score ?? 0);
+  const handleStreamMessage = useCallback((msg: Record<string, unknown>) => {
+    if (msg.type === "conversation" && typeof msg.id === "string") {
+      setConversationId(msg.id);
+      return;
+    }
+    if (msg.type === "token" && typeof msg.text === "string") {
+      const aid = assistantIdRef.current;
+      if (!aid) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aid
+            ? { ...m, content: m.content + msg.text, streaming: true }
+            : m,
+        ),
+      );
+      return;
+    }
+    if (msg.type === "citations") {
+      const aid = assistantIdRef.current;
+      const rawCitations = Array.isArray(msg.citations)
+        ? msg.citations
+            .map((citation) => {
+              if (!citation || typeof citation !== "object") {
+                return null;
+              }
+              const record = citation as Record<string, unknown>;
+              const documentId =
+                typeof record.documentId === "string" ? record.documentId : "";
+              const sourcePath =
+                typeof record.sourcePath === "string" ? record.sourcePath : "";
+              const filename =
+                typeof record.filename === "string" ? record.filename : "";
+              const score =
+                typeof record.score === "number" ? record.score : Number(record.score ?? 0);
 
-                  if (!documentId && !sourcePath) {
-                    return null;
-                  }
+              if (!documentId && !sourcePath) {
+                return null;
+              }
 
-                  return {
-                    documentId,
-                    sourcePath,
-                    filename,
-                    score: Number.isFinite(score) ? score : 0,
-                  } satisfies Citation;
-                })
-                .filter((citation): citation is Citation => citation !== null)
-            : [];
+              return {
+                documentId,
+                sourcePath,
+                filename,
+                score: Number.isFinite(score) ? score : 0,
+              } satisfies Citation;
+            })
+            .filter((citation): citation is Citation => citation !== null)
+        : [];
 
-          const citations = Array.from(
-            rawCitations
-              .reduce((map, citation) => {
-                const key = `${citation.filename}|${citation.sourcePath}|${citation.documentId}`;
-                const existing = map.get(key);
-                if (!existing || citation.score > existing.score) {
-                  map.set(key, citation);
-                }
-                return map;
-              }, new Map<string, Citation>())
-              .values(),
-          );
+      const citations = Array.from(
+        rawCitations
+          .reduce((map, citation) => {
+            const key = `${citation.filename}|${citation.sourcePath}|${citation.documentId}`;
+            const existing = map.get(key);
+            if (!existing || citation.score > existing.score) {
+              map.set(key, citation);
+            }
+            return map;
+          }, new Map<string, Citation>())
+          .values(),
+      );
 
-          if (aid) {
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === aid ? { ...message, citations } : message,
-              ),
-            );
-          }
-          return;
-        }
-        if (msg.type === "done") {
-          const aid = assistantIdRef.current;
-          assistantIdRef.current = null;
-          if (aid) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aid ? { ...m, streaming: false } : m,
-              ),
-            );
-          }
-          setBusy(false);
-          return;
-        }
-        if (msg.type === "error") {
-          const aid = assistantIdRef.current;
-          assistantIdRef.current = null;
-          setBusy(false);
-          const text =
-            typeof msg.message === "string" ? msg.message : "Unknown error";
-          if (aid) {
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === aid
-                  ? { ...message, content: `Error: ${text}`, streaming: false }
-                  : message,
-              ),
-            );
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content: `Error: ${text}`,
-              },
-            ]);
-          }
-        }
-      } catch {
-        /* ignore */
+      if (aid) {
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === aid ? { ...message, citations } : message,
+          ),
+        );
       }
-    };
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
+      return;
+    }
+    if (msg.type === "done") {
+      const aid = assistantIdRef.current;
+      assistantIdRef.current = null;
+      if (aid) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === aid ? { ...m, streaming: false } : m)),
+        );
+      }
+      setBusy(false);
+      return;
+    }
+    if (msg.type === "error") {
+      const aid = assistantIdRef.current;
+      assistantIdRef.current = null;
+      setBusy(false);
+      const text = typeof msg.message === "string" ? msg.message : "Unknown error";
+      if (aid) {
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === aid
+              ? { ...message, content: `Error: ${text}`, streaming: false }
+              : message,
+          ),
+        );
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: `Error: ${text}`,
+          },
+        ]);
+      }
+    }
   }, []);
 
-  const sendChat = useCallback(() => {
+  const sendChat = useCallback(async () => {
     const text = input.trim();
     if (!text || busy) return;
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     setInput("");
     setBusy(true);
@@ -272,16 +308,56 @@ export default function App() {
       { id: asstId, role: "assistant", content: "", streaming: true },
     ]);
 
-    ws.send(
-      JSON.stringify({
-        type: "chat",
-        content: text,
-        conversationId: conversationId ?? undefined,
-        role,
-        visibility,
-      }),
-    );
-  }, [busy, conversationId, input, role, visibility]);
+    try {
+      const res = await fetch(`${apiBase()}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "chat",
+          content: text,
+          conversationId: conversationId ?? undefined,
+          role,
+          visibility,
+        }),
+      });
+
+      if (!res.ok || !res.body) {
+        throw new Error(`Chat request failed (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          const chunk = buffer.slice(0, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+          const lines = chunk.split("\n");
+          const dataLine = lines.find((line) => line.startsWith("data: "));
+          if (dataLine) {
+            const payload = dataLine.slice(6);
+            try {
+              const msg = JSON.parse(payload) as Record<string, unknown>;
+              handleStreamMessage(msg);
+            } catch {
+              /* ignore */
+            }
+          }
+          boundary = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (err) {
+      handleStreamMessage({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [busy, conversationId, handleStreamMessage, input, role, visibility]);
 
   const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -444,12 +520,19 @@ export default function App() {
 
         <section className="chat-shell">
           <div ref={chatListRef} className="chat-list">
-            {messages.length === 0 && (
+            {messages.length === 0 && !historyLoading && (
               <div className="empty-state">
                 <p className="empty-title">Ready when you are</p>
                 <p className="empty-copy">
                   Upload a document on the left, then ask a grounded question here.
                 </p>
+              </div>
+            )}
+
+            {messages.length === 0 && historyLoading && (
+              <div className="empty-state">
+                <p className="empty-title">Loading conversation...</p>
+                <p className="empty-copy">Restoring your recent messages.</p>
               </div>
             )}
 
