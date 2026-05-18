@@ -77,3 +77,27 @@ async def update_job_failed(job_id: str, error: str) -> None:
             """,
             (error, job_id),
         )
+
+
+async def list_all_documents() -> list[dict]:
+    """Retrieve all documents ordered by creation date (newest first)."""
+    async with get_conn() as conn:
+        rows = await conn.fetchall(
+            """
+            SELECT id, filename, storage_path, checksum, created_at
+            FROM documents
+            ORDER BY created_at DESC
+            """,
+        )
+    return [dict(row) for row in rows]
+
+
+async def delete_document(doc_id: str) -> bool:
+    """Delete a document and return whether it existed."""
+    async with get_conn() as conn:
+        result = await conn.execute(
+            "DELETE FROM documents WHERE id = %s",
+            (doc_id,),
+        )
+    return result != "DELETE 0"
+

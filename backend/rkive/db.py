@@ -46,6 +46,13 @@ class _Conn:
             raise RuntimeError(f"Expected one row, got none for: {query!r}")
         return row
 
+    async def fetchall(self, query: str, params: tuple = ()) -> list[dict[str, Any]]:
+        async with self._conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(query, params)
+            rows = await cur.fetchall()
+            await self._conn.commit()
+            return list(rows)  # type: ignore[return-value]
+
 
 @asynccontextmanager
 async def get_conn() -> AsyncGenerator[_Conn, None]:

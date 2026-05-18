@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { ReactNode } from "react";
+import Files from "./Files";
 
 type Role = "user" | "assistant" | "system";
 
@@ -103,6 +104,7 @@ function renderAssistantContent(content: string): ReactNode {
 }
 
 export default function App() {
+  const [page, setPage] = useState<"chat" | "files">("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
@@ -326,6 +328,21 @@ export default function App() {
     return `${Math.max(0, Math.min(100, Math.round(score * 100)))}%`;
   };
 
+  if (page === "files") {
+    return (
+      <div className="app-wrapper">
+        <Files />
+        <button 
+          className="nav-button chat-nav"
+          onClick={() => setPage("chat")}
+          title="Back to Chat"
+        >
+          ← Chat
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -401,6 +418,20 @@ export default function App() {
 
           {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
           <p className="upload-note">Files are sent with the selected visibility.</p>
+        </section>
+
+        <div className="sidebar-divider" />
+
+        <section className="sidebar-section">
+          <button 
+            className="files-nav-button"
+            onClick={() => setPage("files")}
+          >
+            📁 Manage Documents
+          </button>
+          <p className="section-copy">
+            View, organize, and delete your uploaded documents.
+          </p>
         </section>
       </aside>
 

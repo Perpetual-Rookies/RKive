@@ -15,9 +15,12 @@ from rkive.repositories.documents import (
     insert_ingestion_job,
     update_job_failed,
     update_job_succeeded,
+    list_all_documents,
+    delete_document,
 )
 from rkive.services.ingest import ingest_file
 from rkive.services.pdf import extract_text_from_pdf
+from rkive.services.qdrant import delete_points_by_document_id
 from rkive.visibility import DEFAULT_VISIBILITY, normalize_visibility
 
 router = APIRouter(prefix="/api")
@@ -112,3 +115,50 @@ async def download_document(doc_id: str):
         media_type="text/plain",
         content_disposition_type="inline"
     )
+
+
+@router.get("/documents")
+async def list_documents():
+    """List all uploaded documents with metadata."""
+    documents = await list_all_documents()
+    return {
+        "documents": [
+            {
+                "id": doc["id"],
+                "filename": doc["filename"],
+                "created_at": doc["created_at"].isoformat() if doc["created_at"] else None,
+                "file_type": "PDF" if doc["filename"].lower().endswith(".pdf") else "Markdown",
+            }
+            for doc in documents
+        ]
+    }
+
+
+@router.delete("/documents/{doc_id}")
+async def remove_document(doc_id: str):
+    """Delete a document by ID, including all associated vectors in Qdrant."""
+    doc = await get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Delete embeddings from Qdrant (RAG consistency: remove from all storage layers)
+    await delete_points_by_document_id(doc_id)
+    
+    # Delete the file from disk storage
+    storage_path = Path(doc["storage_path"])
+    if storage_path.exists():
+        storage_path.unlink()
+    
+    # Also delete any temporary markdown file created from PDF extraction
+    if doc["filename"].lower().endswith(".pdf"):
+        temp_md = storage_path.parent / f"{storage_path.stem}.md"
+        if temp_md.exists():
+            temp_md.unlink()
+    
+    # Delete from database
+    deleted = await delete_document(doc_id)
+    
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return {"status": "deleted", "documentId": doc_id}
