@@ -237,8 +237,8 @@ export default function Files({ onBack }: FilesProps) {
       <main className="library-main">
         <header className="library-header">
           <div>
-            <p className="eyebrow">Library</p>
-            <h2>Manage the documents that power RKive.</h2>
+            <p className="eyebrow">Documents</p>
+            <h2>Manage the sources that power RKive.</h2>
           </div>
           <div className="header-panel">
             <div className="header-panel-row">
@@ -261,7 +261,7 @@ export default function Files({ onBack }: FilesProps) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="composer-input toolbar-search"
-            placeholder="Search by filename, type, or visibility"
+            placeholder="Filter by filename, type, or visibility"
           />
           <div className="filter-row">
             {(["All", ...VISIBILITY_OPTIONS] as const).map((option) => (

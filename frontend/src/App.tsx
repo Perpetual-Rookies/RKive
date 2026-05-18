@@ -134,6 +134,7 @@ export default function App() {
   const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
   const assistantIdRef = useRef<string | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
   const connected = true;
 
   const loadDocuments = useCallback(async () => {
@@ -228,6 +229,11 @@ export default function App() {
     if (!chatList) return;
     chatList.scrollTo({ top: chatList.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (page !== "chat" || historyLoading || messages.length === 0) return;
+    composerRef.current?.scrollIntoView({ block: "end", behavior: "auto" });
+  }, [historyLoading, messages.length, page]);
 
   const handleStreamMessage = useCallback((msg: Record<string, unknown>) => {
     if (msg.type === "conversation" && typeof msg.id === "string") {
@@ -516,7 +522,7 @@ export default function App() {
 
         <section className="sidebar-card">
           <div className="section-heading">
-            <span>Profile</span>
+            <span>Access</span>
             <span className="status-pill is-online">
               <span className="status-dot" />
               {connected ? "Connected" : "Offline"}
@@ -546,7 +552,7 @@ export default function App() {
 
         <section className="sidebar-card">
           <div className="section-heading">
-            <span>Upload</span>
+            <span>Add source</span>
             <button className="link-button" onClick={() => setPage("files")} type="button">
               Documents
             </button>
@@ -581,7 +587,7 @@ export default function App() {
 
         <section className="sidebar-card">
           <div className="section-heading">
-            <span>Library</span>
+            <span>Recent sources</span>
             <span className="helper-chip">{documentsLoading ? "Syncing" : `${documents.length} docs`}</span>
           </div>
           <div className="mini-stat-grid">
@@ -640,7 +646,7 @@ export default function App() {
               <span className="panel-value">{visibility}</span>
             </div>
             <div className="header-panel-row">
-              <span className="panel-label">Sources</span>
+              <span className="panel-label">Grounding</span>
               <span className="panel-value">Cited</span>
             </div>
           </div>
@@ -664,13 +670,13 @@ export default function App() {
             {messages.length === 0 && !historyLoading && (
               <div className="welcome-panel">
                 <div className="welcome-hero">
-                  <h3>Start with a document, then ask a precise question.</h3>
+                  <h3>Start with a document, then ask one precise question.</h3>
                   <p className="empty-copy">Answers are generated only from indexed sources.</p>
                 </div>
                 <div className="welcome-grid">
                   <div className="welcome-card">
                     <strong>Upload</strong>
-                    <p>Add markdown or PDF files.</p>
+                      <p>Add a markdown or PDF source.</p>
                   </div>
                   <div className="welcome-card">
                     <strong>Ask</strong>
@@ -678,7 +684,7 @@ export default function App() {
                   </div>
                   <div className="welcome-card">
                     <strong>Verify</strong>
-                    <p>Open citations to inspect source files.</p>
+                      <p>Open citations to inspect the original source.</p>
                   </div>
                 </div>
               </div>
@@ -703,7 +709,7 @@ export default function App() {
                 >
                   <div className={`message-card ${isUser ? "is-user" : "is-assistant"}`}>
                     <div className="message-header">
-                      <span className="message-label">{isUser ? "You" : "RKive"}</span>
+                      <span className="message-label">{isUser ? "You" : "RKive answer"}</span>
                       <span className="message-subtitle">
                         {isUser ? "Question submitted" : "Grounded response"}
                       </span>
@@ -751,6 +757,7 @@ export default function App() {
           </div>
 
           <form
+            ref={composerRef}
             className="composer"
             onSubmit={(event) => {
               event.preventDefault();
