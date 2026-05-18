@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ChangeEvent } from "react";
-import rsystemsLogo from "./assets/rsystems-logo-white.svg";
+import PageBrand from "./PageBrand";
 
 type FileType = "Markdown" | "PDF";
 type Visibility = "Org Level (Public)" | "Sales Project (Private)";
@@ -157,18 +157,23 @@ export default function Files({ onBack }: FilesProps) {
   }, [documents]);
 
   return (
-    <div className="library-shell">
-      <aside className="library-sidebar">
-        <div className="brand-block">
-          <div className="brand-mark brand-logo">
-            <img src={rsystemsLogo} alt="Rsystems" />
-          </div>
-          <div>
-            <h1 className="brand-title">Documents</h1>
-            <p className="brand-copy">Manage indexed sources</p>
-          </div>
+    <div className="files-page">
+      <header className="page-toolbar">
+        <PageBrand />
+        <div className="page-toolbar-actions">
+          {onBack && (
+            <button className="icon-button" onClick={onBack} type="button">
+              <span className="icon-button-glyph" aria-hidden="true">
+                ←
+              </span>
+              <span>Knowledge base</span>
+            </button>
+          )}
         </div>
+      </header>
 
+      <div className="library-shell">
+      <aside className="library-sidebar">
         <section className="sidebar-card">
           <div className="section-heading">
             <span>Library metrics</span>
@@ -197,11 +202,6 @@ export default function Files({ onBack }: FilesProps) {
         <section className="sidebar-card">
           <div className="section-heading">
             <span>Upload source</span>
-            {onBack && (
-              <button className="link-button" onClick={onBack} type="button">
-                Chat
-              </button>
-            )}
           </div>
           <label className="field-label" htmlFor="library-visibility">
             Visibility
@@ -327,6 +327,7 @@ export default function Files({ onBack }: FilesProps) {
           </section>
         )}
       </main>
+    </div>
     </div>
   );
 }

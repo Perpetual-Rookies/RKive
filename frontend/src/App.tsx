@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
 import Files from "./Files";
-import rsystemsLogo from "./assets/rsystems-logo-white.svg";
+import KnowledgeBase from "./KnowledgeBase";
+import PageBrand from "./PageBrand";
+import SessionPanel from "./SessionPanel";
+import Toast from "./Toast";
 
 type Role = "user" | "assistant" | "system";
 type AppRole = "Standard Employee" | "Sales Representative";
@@ -99,29 +102,8 @@ function renderAssistantContent(content: string): ReactNode {
   return nodes.length === 0 ? content : nodes;
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "Unknown";
-  return new Date(dateStr).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function roleDescription(role: AppRole): string {
-  return role === "Sales Representative"
-    ? "Access to org-wide and sales-private content."
-    : "Access to org-wide public content only.";
-}
-
-function roleScope(role: AppRole): string {
-  return role === "Sales Representative"
-    ? "Org knowledge + sales-private sources"
-    : "Org-level public sources only";
-}
-
 export default function App() {
-  const [page, setPage] = useState<"chat" | "files">("chat");
+  const [page, setPage] = useState<"chat" | "knowledge" | "files">("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
@@ -132,10 +114,46 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [role, setRole] = useState<AppRole>(ROLE_OPTIONS[0]);
   const [visibility, setVisibility] = useState<Visibility>(VISIBILITY_OPTIONS[0]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const assistantIdRef = useRef<string | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const connected = true;
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    setToastMessage(message);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 3000);
+  }, []);
+
+  const startNewConversation = useCallback(() => {
+    if (busy) return;
+    assistantIdRef.current = null;
+    setConversationId(null);
+    setMessages([]);
+    setInput("");
+    setHistoryLoading(false);
+  }, [busy]);
+
+  const shareConversation = useCallback(async () => {
+    if (!conversationId) {
+      showToast("Send a message first to create a shareable conversation.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      showToast("Conversation link copied.");
+    } catch {
+      showToast("Could not copy the conversation link.");
+    }
+  }, [conversationId, showToast]);
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -502,156 +520,64 @@ export default function App() {
   if (page === "files") {
     return (
       <div className="app-wrapper">
-        <Files onBack={() => setPage("chat")} />
+        <Files onBack={() => setPage("knowledge")} />
+      </div>
+    );
+  }
+
+  if (page === "knowledge") {
+    return (
+      <div className="app-wrapper">
+        <KnowledgeBase
+          role={role}
+          visibility={visibility}
+          uploadStatus={uploadStatus}
+          documents={documents}
+          documentsLoading={documentsLoading}
+          documentStats={documentStats}
+          recentDocuments={recentDocuments}
+          onBack={() => setPage("chat")}
+          onOpenFiles={() => setPage("files")}
+          onRoleChange={setRole}
+          onVisibilityChange={setVisibility}
+          onUpload={onUpload}
+        />
       </div>
     );
   }
 
   return (
-    <div className="app-shell">
-      <aside className="workspace-sidebar">
-        <div className="brand-block">
-          <div className="brand-mark brand-logo">
-            <img src={rsystemsLogo} alt="Rsystems" />
-          </div>
-          <div>
-            <h1 className="brand-title">RKive</h1>
-            <p className="brand-copy">Internal knowledge assistant</p>
-          </div>
-        </div>
-
-        <section className="sidebar-card">
-          <div className="section-heading">
-            <span>Access</span>
-            <span className="status-pill is-online">
-              <span className="status-dot" />
-              {connected ? "Connected" : "Offline"}
+    <div className="chat-app">
+      <header className="page-toolbar">
+        <PageBrand />
+        <div className="page-toolbar-actions">
+          <button
+            type="button"
+            className="topbar-cta topbar-cta--primary"
+            onClick={() => setPage("knowledge")}
+            aria-label="Open knowledge base"
+          >
+            <span className="topbar-cta__icon" aria-hidden="true">
+              📚
             </span>
-          </div>
-          <label className="field-label" htmlFor="role-select">
-            Role
-          </label>
-          <select
-            id="role-select"
-            className="select"
-            value={role}
-            onChange={(event) => setRole(event.target.value as AppRole)}
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <p className="section-copy">{roleDescription(role)}</p>
-          <div className="scope-banner">
-            <span className="scope-label">Scope</span>
-            <strong>{roleScope(role)}</strong>
-          </div>
-        </section>
+            <span className="topbar-cta__label">Knowledge base</span>
+          </button>
+        </div>
+      </header>
 
-        <section className="sidebar-card">
-          <div className="section-heading">
-            <span>Add source</span>
-            <button className="link-button" onClick={() => setPage("files")} type="button">
-              Documents
-            </button>
-          </div>
-          <label className="field-label" htmlFor="visibility-select">
-            Visibility
-          </label>
-          <select
-            id="visibility-select"
-            className="select"
-            value={visibility}
-            onChange={(event) => setVisibility(event.target.value as Visibility)}
-          >
-            {VISIBILITY_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <label className="upload-button" htmlFor="document-upload">
-            Upload knowledge document
-          </label>
-          <input
-            id="document-upload"
-            type="file"
-            accept=".md,.pdf,text/markdown,application/pdf"
-            className="file-input"
-            onChange={onUpload}
-          />
-          {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
-        </section>
+      <div className="chat-workspace">
+        <SessionPanel
+          connected={connected}
+          role={role}
+          visibility={visibility}
+          messageCount={messages.length}
+          hasConversation={conversationId !== null}
+          busy={busy}
+          onNewConversation={startNewConversation}
+          onShare={() => void shareConversation()}
+        />
 
-        <section className="sidebar-card">
-          <div className="section-heading">
-            <span>Recent sources</span>
-            <span className="helper-chip">{documentsLoading ? "Syncing" : `${documents.length} docs`}</span>
-          </div>
-          <div className="mini-stat-grid">
-            <div className="mini-stat">
-              <span className="mini-stat-value">{documentStats.publicDocs}</span>
-              <span className="mini-stat-label">public</span>
-            </div>
-            <div className="mini-stat">
-              <span className="mini-stat-value">{documentStats.privateDocs}</span>
-              <span className="mini-stat-label">private</span>
-            </div>
-            <div className="mini-stat">
-              <span className="mini-stat-value">{documentStats.markdown}</span>
-              <span className="mini-stat-label">markdown</span>
-            </div>
-            <div className="mini-stat">
-              <span className="mini-stat-value">{documentStats.pdfs}</span>
-              <span className="mini-stat-label">pdf</span>
-            </div>
-          </div>
-          <div className="recent-list">
-            {recentDocuments.length === 0 ? (
-              <p className="empty-copy">No indexed documents yet.</p>
-            ) : (
-              recentDocuments.map((doc) => (
-                <div key={doc.id} className="recent-item">
-                  <div>
-                    <p className="recent-item-title">{doc.filename}</p>
-                    <p className="recent-item-meta">
-                      {doc.file_type} · {doc.visibility}
-                    </p>
-                  </div>
-                  <span className="recent-item-date">{formatDate(doc.created_at)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </aside>
-
-      <main className="workspace-main">
-        <header className="workspace-header">
-          <div className="header-copy">
-            <p className="eyebrow">Chat</p>
-            <h2>Ask questions against your indexed documents.</h2>
-          </div>
-          <div className="header-panel">
-            <div className="header-panel-row">
-              <span className="panel-label">Conversation</span>
-              <span className="panel-value mono">
-                {conversationId ? conversationId.slice(0, 8) : "New session"}
-              </span>
-            </div>
-            <div className="header-panel-row">
-              <span className="panel-label">Visibility</span>
-              <span className="panel-value">{visibility}</span>
-            </div>
-            <div className="header-panel-row">
-              <span className="panel-label">Grounding</span>
-              <span className="panel-value">Cited</span>
-            </div>
-          </div>
-        </header>
-
+        <main className="chat-main">
         <section className="prompt-bar">
           {QUICK_PROMPTS.map((prompt) => (
             <button
@@ -670,13 +596,15 @@ export default function App() {
             {messages.length === 0 && !historyLoading && (
               <div className="welcome-panel">
                 <div className="welcome-hero">
-                  <h3>Start with a document, then ask one precise question.</h3>
-                  <p className="empty-copy">Answers are generated only from indexed sources.</p>
+                  <h3>Ask a question about your indexed knowledge.</h3>
+                  <p className="empty-copy">
+                    Upload sources and adjust access from the knowledge base when you need them.
+                  </p>
                 </div>
                 <div className="welcome-grid">
                   <div className="welcome-card">
-                    <strong>Upload</strong>
-                      <p>Add a markdown or PDF source.</p>
+                    <strong>Knowledge base</strong>
+                    <p>Upload markdown or PDF sources and manage access.</p>
                   </div>
                   <div className="welcome-card">
                     <strong>Ask</strong>
@@ -778,21 +706,26 @@ export default function App() {
                 className="composer-input composer-textarea"
                 rows={3}
               />
-              <div className="composer-meta">
-                <span>Enter to send</span>
-                <span>Shift + Enter for a new line</span>
+              <div className="composer-footer">
+                <span className="composer-hint composer-hint--left">Enter to send</span>
+                <button
+                  type="submit"
+                  className="composer-button"
+                  disabled={!connected || busy || !input.trim()}
+                >
+                  {busy ? "Thinking..." : "Send"}
+                </button>
+                <span className="composer-hint composer-hint--right">
+                  Shift + Enter for a new line
+                </span>
               </div>
             </div>
-            <button
-              type="submit"
-              className="composer-button"
-              disabled={!connected || busy || !input.trim()}
-            >
-              {busy ? "Thinking..." : "Send question"}
-            </button>
           </form>
         </section>
-      </main>
+        </main>
+      </div>
+
+      <Toast message={toastMessage} />
     </div>
   );
 }
