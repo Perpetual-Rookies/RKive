@@ -111,12 +111,23 @@ async def download_document(doc_id: str):
     storage_path = Path(doc["storage_path"])
     if not storage_path.exists():
         raise HTTPException(status_code=404, detail="File missing from storage")
-        
+    # Choose the correct media type based on file extension so browsers
+    # can render PDFs inline instead of failing to load them as plain text.
+    file_ext = storage_path.suffix.lower()
+    if file_ext == ".pdf":
+        media_type = "application/pdf"
+    elif file_ext == ".md":
+        media_type = "text/markdown"
+    else:
+        media_type = "application/octet-stream"
+
+    # Force inline rendering where possible.
+    headers = {"Content-Disposition": f'inline; filename="{doc["filename"]}"'}
+
     return FileResponse(
         path=storage_path,
-        filename=doc["filename"],
-        media_type="text/plain",
-        content_disposition_type="inline"
+        media_type=media_type,
+        headers=headers,
     )
 
 
