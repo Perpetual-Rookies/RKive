@@ -9,12 +9,12 @@ from pathlib import Path
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_url: str
-    llm_provider: str = "gemini"
     llm_api_key: str | None = None
-    llm_chat_model: str = "gemini-2.5-flash"
-    embedding_model: str = "text-embedding-004"
-    ollama_base_url: str = "http://host.docker.internal:11434"
-    embedder_base_url: str = "http://host.docker.internal:11434"
+    embedding_api_key: str | None = None
+    llm_chat_model: str = "llama3.1"
+    embedding_model: str = "nomic-embed-text"
+    llm_base_url: str = "http://host.docker.internal:11434"
+    embedding_base_url: str = "http://host.docker.internal:11434"
     qdrant_url: str = ""
     qdrant_collection: str = "org-default"
     qdrant_api_key: str | None = None
@@ -22,9 +22,10 @@ class Settings:
     upload_dir: Path = Path.cwd() / "data" / "uploads"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "llm_provider", self.llm_provider.strip().lower())
-        object.__setattr__(self, "ollama_base_url", self.ollama_base_url.rstrip("/"))
         object.__setattr__(self, "upload_dir", Path(self.upload_dir))
+
+        object.__setattr__(self, "llm_base_url", self.llm_base_url.rstrip("/"))
+        object.__setattr__(self, "embedding_base_url", self.embedding_base_url.rstrip("/"))
 
     @property
     def chat_model(self) -> str:
@@ -47,12 +48,15 @@ def get_settings() -> Settings:
 
     return Settings(
         database_url=database_url,
-        llm_provider=os.environ.get("LLM_PROVIDER", "gemini"),
         llm_api_key=os.environ.get("LLM_API_KEY") or None,
-        llm_chat_model=os.environ.get("LLM_CHAT_MODEL", "gemini-2.5-flash"),
-        embedding_model=os.environ.get("EMBEDDING_MODEL", "text-embedding-004"),
-        ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "https://api.ollama.com"),
-        embedder_base_url=os.environ.get("EMBEDDER_BASE_URL", "http://host.docker.internal:11434"),
+        embedding_api_key=os.environ.get("EMBEDDING_API_KEY") or None,
+        llm_chat_model=os.environ.get("LLM_CHAT_MODEL", "llama3.1"),
+        embedding_model=os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"),
+        llm_base_url=os.environ.get("LLM_BASE_URL", "http://host.docker.internal:11434"),
+        embedding_base_url=os.environ.get(
+            "EMBEDDING_BASE_URL",
+            os.environ.get("LLM_BASE_URL", "http://host.docker.internal:11434"),
+        ),
         qdrant_url=qdrant_url,
         qdrant_collection=os.environ.get("QDRANT_COLLECTION", "org-default"),
         qdrant_api_key=os.environ.get("QDRANT_API_KEY") or None,
@@ -65,12 +69,12 @@ def get_database_url() -> str:
     return get_settings().database_url
 
 
-def get_llm_provider() -> str:
-    return get_settings().llm_provider
-
-
 def get_llm_api_key() -> str | None:
     return get_settings().llm_api_key
+
+
+def get_embedding_api_key() -> str | None:
+    return get_settings().embedding_api_key
 
 
 def get_llm_chat_model() -> str:
@@ -81,11 +85,12 @@ def get_embedding_model() -> str:
     return get_settings().embedding_model
 
 
-def get_ollama_base() -> str:
-    return get_settings().ollama_base_url
+def get_llm_base_url() -> str:
+    return get_settings().llm_base_url
 
-def get_embedder_base() -> str:
-    return get_settings().embedder_base_url
+
+def get_embedding_base_url() -> str:
+    return get_settings().embedding_base_url
 
 
 def get_qdrant_url() -> str:

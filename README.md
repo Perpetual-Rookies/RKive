@@ -6,7 +6,7 @@
 - [x] **Phase 3:** Premium UI/UX Upgrade
 - [x] **Phase 4:** Demo Data Preparation
 
-Reactive org-level knowledge chat: React UI, FastAPI backend, markdown and PDF ingestion, **PostgreSQL**, **Qdrant**, and a configurable LLM/embedding provider (Gemini by default).
+Reactive org-level knowledge chat: React UI, FastAPI backend, markdown and PDF ingestion, **PostgreSQL**, **Qdrant**, and a simple single-endpoint LLM/embedding setup.
 
 ## Current Features
 
@@ -50,7 +50,7 @@ Upload a `.md` or `.pdf` file from the UI, then ask questions in the chat. Answe
 ## Local development (without Docker for Node/React)
 
 1. Start **Postgres** and **Qdrant** (e.g. `docker compose up postgres qdrant -d`).
-2. **Backend:** `cp .env.example .env`, set `DATABASE_URL`, `QDRANT_URL`, `LLM_PROVIDER`, and `LLM_API_KEY`, then run `make dev-api`.
+2. **Backend:** `cp .env.example .env`, set `DATABASE_URL`, `QDRANT_URL`, and `LLM_CHAT_MODEL` / `EMBEDDING_MODEL`, then run `make dev-api`.
 3. **Frontend:** `cd frontend && npm install && npm run dev` — Vite proxies `/api` and `/ws` to `http://localhost:3001` by default (`VITE_API_BASE` in `frontend/.env`).
 
 ## Search and Retrieval Notes
@@ -72,9 +72,11 @@ See [.env.example](.env.example). Important:
 | `DATABASE_URL` | Postgres connection string |
 | `QDRANT_URL` | Qdrant REST URL |
 | `QDRANT_COLLECTION` | Vector collection name (default `org-default`) |
-| `LLM_PROVIDER` | Provider name (`gemini` by default) |
-| `LLM_API_KEY` | Provider API key |
+| `LLM_API_KEY` | Optional auth header for chat (only if your endpoint requires it) |
+| `EMBEDDING_API_KEY` | Optional auth header for embeddings (only if your embedding endpoint requires it) |
 | `LLM_CHAT_MODEL` / `EMBEDDING_MODEL` | Model names |
+| `LLM_BASE_URL` | Base URL for chat |
+| `EMBEDDING_BASE_URL` | Optional separate base URL for embeddings (defaults to `LLM_BASE_URL`) |
 | `EMBEDDING_DIM` | Vector size for collection creation |
 | `SCRIPTS_ROOT` | Path to `scripts/` (default: sibling of `backend/` in dev; `/app/scripts` in Docker) |
 
