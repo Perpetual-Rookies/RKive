@@ -121,6 +121,14 @@ export default function App() {
   const composerRef = useRef<HTMLFormElement | null>(null);
   const connected = true;
 
+  useEffect(() => {
+    if (role === "Standard Employee") {
+      setVisibility("Org Level (Public)");
+    } else if (role === "Sales Representative") {
+      setVisibility("Sales Project (Private)");
+    }
+  }, [role]);
+
   const showToast = useCallback((message: string) => {
     if (toastTimeoutRef.current !== null) {
       window.clearTimeout(toastTimeoutRef.current);
@@ -557,9 +565,22 @@ export default function App() {
             onClick={() => setPage("knowledge")}
             aria-label="Open knowledge base"
           >
-            <span className="topbar-cta__icon" aria-hidden="true">
-              📚
-            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topbar-cta__icon"
+              aria-hidden="true"
+            >
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
             <span className="topbar-cta__label">Knowledge base</span>
           </button>
         </div>
@@ -576,7 +597,6 @@ export default function App() {
           onNewConversation={startNewConversation}
           onShare={() => void shareConversation()}
           onRoleChange={setRole}
-          onVisibilityChange={setVisibility}
         />
 
         <main className="chat-main">
@@ -598,23 +618,89 @@ export default function App() {
             {messages.length === 0 && !historyLoading && (
               <div className="welcome-panel">
                 <div className="welcome-hero">
-                  <h3>✨ Ask a question about your indexed knowledge.</h3>
+                  <h3 className="welcome-hero-title">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="welcome-hero-icon"
+                      aria-hidden="true"
+                    >
+                      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                      <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5 5 3Z" />
+                      <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5Z" />
+                    </svg>
+                    <span className="welcome-hero-text">Ask a question about your indexed knowledge.</span>
+                  </h3>
                   <p className="empty-copy">
                     Upload sources and adjust access from the knowledge base when you need them.
                   </p>
                 </div>
                 <div className="welcome-grid">
                   <div className="welcome-card">
-                    <strong>🗄️ Knowledge base</strong>
+                    <div className="welcome-card-icon">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="welcome-icon"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                      </svg>
+                    </div>
+                    <strong>Knowledge base</strong>
                     <p>Upload markdown or PDF sources and manage access.</p>
                   </div>
                   <div className="welcome-card">
-                    <strong>💬 Ask</strong>
+                    <div className="welcome-card-icon">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="welcome-icon"
+                        aria-hidden="true"
+                      >
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                    </div>
+                    <strong>Ask</strong>
                     <p>Query the indexed knowledge base.</p>
                   </div>
                   <div className="welcome-card">
-                    <strong>🔍 Verify</strong>
-                      <p>Open citations to inspect the original source.</p>
+                    <div className="welcome-card-icon">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="welcome-icon"
+                        aria-hidden="true"
+                      >
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                    </div>
+                    <strong>Verify</strong>
+                    <p>Open citations to inspect the original source.</p>
                   </div>
                 </div>
               </div>
@@ -622,7 +708,31 @@ export default function App() {
 
             {messages.length === 0 && historyLoading && (
               <div className="empty-state">
-                <p className="empty-title">⏳ Loading conversation...</p>
+                <p className="empty-title">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="loading-spinner-icon"
+                    aria-hidden="true"
+                  >
+                    <line x1="12" y1="2" x2="12" y2="6"></line>
+                    <line x1="12" y1="18" x2="12" y2="22"></line>
+                    <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                    <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                    <line x1="2" y1="12" x2="6" y2="12"></line>
+                    <line x1="18" y1="12" x2="22" y2="12"></line>
+                    <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                    <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                  </svg>
+                  <span>Loading conversation...</span>
+                </p>
                 <p className="empty-copy">Restoring recent grounded answers and citations.</p>
               </div>
             )}
@@ -658,7 +768,25 @@ export default function App() {
                     {isAssistant && !message.streaming && citations.length > 0 && (
                       <div className="citation-block">
                         <div className="citation-block-header">
-                          <span>🔗 Sources</span>
+                          <span className="citation-header-label">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="citation-header-icon"
+                              aria-hidden="true"
+                            >
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            Sources
+                          </span>
                           <span>{citations.length} attached</span>
                         </div>
                         <div className="citation-row">
