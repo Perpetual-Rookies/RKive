@@ -243,7 +243,7 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
 
     Returns the number of chunks stored (0 if the file is empty).
     """
-    log.info("ingestion_started", extra={"document_id": document_id, "filename": filename})
+    log.info("ingestion_started", extra={"document_id": document_id, "source_filename": filename})
 
     with open(file_path, encoding="utf-8") as fh:
         raw = fh.read()
@@ -251,10 +251,10 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
     visibility = normalize_visibility(visibility)
     chunks = chunk_markdown(raw)
     if not chunks:
-        log.warning("ingestion_empty_document", extra={"document_id": document_id, "filename": filename})
+        log.warning("ingestion_empty_document", extra={"document_id": document_id, "source_filename": filename})
         return 0
 
-    log.info("ingestion_chunked", extra={"document_id": document_id, "filename": filename, "num_chunks": len(chunks)})
+    log.info("ingestion_chunked", extra={"document_id": document_id, "source_filename": filename, "num_chunks": len(chunks)})
 
     points: list[qm.PointStruct] = []
     collection_ensured = False
@@ -307,5 +307,5 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
         )
 
     await upsert_points(points)
-    log.info("ingestion_completed", extra={"document_id": document_id, "filename": filename, "num_points": len(points)})
+    log.info("ingestion_completed", extra={"document_id": document_id, "source_filename": filename, "num_points": len(points)})
     return len(points)
