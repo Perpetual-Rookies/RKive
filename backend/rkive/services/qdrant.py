@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 from functools import lru_cache
+import logging
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qm
+
+log = logging.getLogger("rkive.qdrant")
 
 from rkive.config import get_qdrant_api_key, get_qdrant_collection, get_qdrant_url
 
@@ -90,6 +93,7 @@ async def search_similar(
             ]
         )
 
+    log.info("qdrant_search_started", extra={"limit": limit, "allowed_visibility": allowed_visibility})
     response = await get_client().query_points(
         collection_name=get_qdrant_collection(),
         query=vector,
@@ -98,6 +102,7 @@ async def search_similar(
         with_payload=True,
     )
     results = response.points
+    log.info("qdrant_search_completed", extra={"hits_returned": len(results)})
     return [
         SearchHit(
             id=str(r.id),

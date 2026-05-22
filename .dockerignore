@@ -4,3 +4,9 @@
 .git
 __pycache__
 *.pyc
+
+# Cache directories
+**/.hf_cache
+**/.pytest_cache
+**/.uv-cache
+**/.venv-eval

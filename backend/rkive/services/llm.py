@@ -40,6 +40,7 @@ async def embed(text: str) -> list[float]:
     """Return an embedding vector for *text* via the configured embeddings endpoint."""
     url = f"{get_embedding_base_url()}/api/embeddings"
     payload = {"model": get_embedding_model(), "prompt": text}
+    log.info("llm_embedding_started", extra={"model": get_embedding_model(), "text_length": len(text)})
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(url, json=payload, headers=_embedding_headers())
         resp.raise_for_status()
@@ -47,6 +48,7 @@ async def embed(text: str) -> list[float]:
     embedding = data.get("embedding") if isinstance(data, dict) else None
     if not embedding:
         raise RuntimeError(f"Embedding endpoint returned no embedding: {data!r}")
+    log.info("llm_embedding_completed", extra={"model": get_embedding_model(), "vector_length": len(embedding)})
     return list(embedding)
 
 
@@ -60,6 +62,7 @@ async def chat_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
     # - read is generous (180 s): long documents can take time to generate.
     # timeout=None was the previous value and caused indefinite SSE hangs.
     _timeout = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)
+    log.info("llm_chat_stream_started", extra={"model": get_llm_chat_model(), "messages_count": len(messages)})
     async with httpx.AsyncClient(timeout=_timeout) as client:
         async with client.stream("POST", url, json=payload, headers=_headers()) as resp:
             try:
@@ -96,3 +99,4 @@ async def chat_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
 
                 if content:
                     yield str(content)
+            log.info("llm_chat_stream_completed", extra={"model": get_llm_chat_model()})

@@ -7,6 +7,7 @@ upsert logic lives here so the router can call a single coroutine.
 """
 
 import hashlib
+import logging
 import re
 import uuid
 
@@ -15,6 +16,8 @@ from qdrant_client.http import models as qm
 from rkive.services.llm import embed
 from rkive.services.qdrant import delete_points_by_document_id, ensure_collection, upsert_points
 from rkive.visibility import normalize_visibility
+
+log = logging.getLogger("rkive.ingest")
 
 
 def _split_large_paragraph(paragraph: str, max_chars: int, overlap: int) -> list[str]:
@@ -240,13 +243,18 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
 
     Returns the number of chunks stored (0 if the file is empty).
     """
+    log.info("ingestion_started", extra={"document_id": document_id, "filename": filename})
+
     with open(file_path, encoding="utf-8") as fh:
         raw = fh.read()
 
     visibility = normalize_visibility(visibility)
     chunks = chunk_markdown(raw)
     if not chunks:
+        log.warning("ingestion_empty_document", extra={"document_id": document_id, "filename": filename})
         return 0
+
+    log.info("ingestion_chunked", extra={"document_id": document_id, "filename": filename, "num_chunks": len(chunks)})
 
     points: list[qm.PointStruct] = []
     collection_ensured = False
@@ -299,4 +307,5 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
         )
 
     await upsert_points(points)
+    log.info("ingestion_completed", extra={"document_id": document_id, "filename": filename, "num_points": len(points)})
     return len(points)

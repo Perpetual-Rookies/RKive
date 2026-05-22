@@ -11,7 +11,10 @@ A false-positive follow-up hijacks the retrieval query with irrelevant history,
 which actively hurts precision for self-contained questions.
 """
 
+import logging
 import re
+
+log = logging.getLogger("rkive.followup")
 
 
 # ── Tier 1: Explicit follow-up starters ──────────────────────────────────────
@@ -154,4 +157,13 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
         context_parts.append(f"{label} — User: {prev_q}")
         context_parts.append(f"{label} — Assistant: {prev_a}")
 
-    return "\n".join(context_parts)
+    expanded_query = "\n".join(context_parts)
+    log.info(
+        "query_expanded_from_history", 
+        extra={
+            "original_question": question, 
+            "expanded_length": len(expanded_query), 
+            "turns_used": len(pairs)
+        }
+    )
+    return expanded_query
