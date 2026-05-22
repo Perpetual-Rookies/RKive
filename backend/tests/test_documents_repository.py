@@ -18,7 +18,7 @@ class _ConnContext:
 class DocumentsRepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_document_returns_none_when_missing(self):
         conn = AsyncMock()
-        conn.fetchone = AsyncMock(return_value=None)
+        conn.fetchone_optional = AsyncMock(return_value=None)
 
         with unittest.mock.patch(
             "rkive.repositories.documents.get_conn",
@@ -27,12 +27,11 @@ class DocumentsRepositoryTests(unittest.IsolatedAsyncioTestCase):
             result = await get_document("missing-doc")
 
         self.assertIsNone(result)
-        conn.fetchone.assert_awaited_once()
-        self.assertEqual(conn.fetchone.await_args.kwargs["required"], False)
+        conn.fetchone_optional.assert_awaited_once()
 
     async def test_get_document_by_checksum_returns_none_when_missing(self):
         conn = AsyncMock()
-        conn.fetchone = AsyncMock(return_value=None)
+        conn.fetchone_optional = AsyncMock(return_value=None)
 
         with unittest.mock.patch(
             "rkive.repositories.documents.get_conn",
@@ -41,5 +40,4 @@ class DocumentsRepositoryTests(unittest.IsolatedAsyncioTestCase):
             result = await get_document_by_checksum("missing-checksum")
 
         self.assertIsNone(result)
-        conn.fetchone.assert_awaited_once()
-        self.assertEqual(conn.fetchone.await_args.kwargs["required"], False)
+        conn.fetchone_optional.assert_awaited_once()

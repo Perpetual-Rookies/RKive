@@ -6,8 +6,11 @@ simple. Configure model names via env vars.
 
 from collections.abc import AsyncGenerator
 import json
+import logging
 
 import httpx
+
+log = logging.getLogger("rkive.llm")
 
 from rkive.config import (
     get_embedding_api_key,
@@ -52,9 +55,27 @@ async def chat_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
     url = f"{get_llm_base_url()}/api/chat"
     payload = {"model": get_llm_chat_model(), "messages": messages, "stream": True}
 
-    async with httpx.AsyncClient(timeout=None) as client:
+    # Finite timeout guards against Ollama process stalls.
+    # - connect/write are tight: fail fast if the daemon is unreachable.
+    # - read is generous (180 s): long documents can take time to generate.
+    # timeout=None was the previous value and caused indefinite SSE hangs.
+    _timeout = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         async with client.stream("POST", url, json=payload, headers=_headers()) as resp:
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                # Read the body of the error response (e.g., {"error":"model '...' not found"})
+                await resp.aread()
+                body = resp.text
+                log.error("llm_http_error", extra={"status": resp.status_code, "body": body})
+                # Attempt to extract JSON error message if present
+                try:
+                    err_msg = json.loads(body).get("error", body)
+                except json.JSONDecodeError:
+                    err_msg = body
+                raise RuntimeError(f"LLM API Error ({resp.status_code}): {err_msg}") from exc
+
             async for line in resp.aiter_lines():
                 if not line:
                     continue

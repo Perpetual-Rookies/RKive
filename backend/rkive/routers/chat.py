@@ -1,12 +1,12 @@
-"""WebSocket streaming RAG chat router.
+"""HTTP SSE streaming RAG chat router.
 
 This module coordinates the online part of the RAG pipeline:
-1. receive the user's question
-2. embed the question as a vector
-3. retrieve candidate chunks from Qdrant
-4. rerank those chunks
-5. build a grounded prompt for the chat model
-6. stream the answer back over WebSocket
+1. Receive the user's question via HTTP POST
+2. Embed the question as a vector
+3. Retrieve candidate chunks from Qdrant
+4. Rerank those chunks
+5. Build a grounded prompt for the chat model
+6. Stream the answer back as Server-Sent Events (SSE)
 
 The actual retrieval and reranking rules live in service modules so the router
 stays focused on request orchestration.
@@ -14,9 +14,10 @@ stays focused on request orchestration.
 
 import json
 import logging
+
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from rkive.config import get_embedding_dim
@@ -27,7 +28,7 @@ from rkive.repositories.conversations import (
     list_messages,
     list_recent_messages,
 )
-from rkive.services.followup import build_retrieval_query
+from rkive.services.followup import build_retrieval_query, is_context_dependent
 from rkive.services.llm import chat_stream, embed
 from rkive.services.qdrant import ensure_collection, search_similar
 from rkive.services.rerank import rerank_hits
@@ -38,12 +39,9 @@ log = logging.getLogger("rkive.chat")
 router = APIRouter()
 
 
-def _msg(**kwargs) -> str:
-    return json.dumps(kwargs)
-
-
-def _sse(data: dict[str, Any]) -> str:
-    return f"data: {json.dumps(data)}\n\n"
+def _safe_get_str(data: dict[str, Any], key: str) -> str:
+    value = data.get(key)
+    return str(value) if value is not None else ""
 
 
 def _preview(text: str, limit: int = 160) -> str:
@@ -53,44 +51,65 @@ def _preview(text: str, limit: int = 160) -> str:
     return f"{trimmed[:limit]}…"
 
 
-def _safe_get_str(data: dict[str, Any], key: str) -> str:
-    value = data.get(key)
-    return str(value) if value is not None else ""
-
-
-def _is_no_info_response(text: str) -> bool:
-    """Detect the explicit fallback phrase used when no grounded answer exists."""
-    normalized = " ".join(text.lower().split())
-    return "do not have that information" in normalized or "don't have that information" in normalized
+def _sse(data: dict[str, Any]) -> str:
+    return f"data: {json.dumps(data)}\n\n"
 
 
 def _hit_key(hit) -> str:
     return f"{hit.filename}|{hit.source_path}|{hit.document_id}"
 
 
-def _dedupe_hits_for_citations(hits):
-    """Collapse chunk-level hits into one user-facing citation per document.
+def _is_no_info_response(text: str) -> bool:
+    """Detect the fallback phrase used when no grounded answer exists."""
+    normalized = " ".join(text.lower().split())
+    return "do not have that information" in normalized or "don't have that information" in normalized
 
-    Retrieval can return multiple chunks from the same file.  That is useful for
-    ranking, but it is confusing in the final answer because the model cites
-    numbered sources while the UI displays one clickable item per document.
-    This helper keeps only the strongest hit per document-like source key so the
-    model and UI share the same numbering scheme.
+
+
+
+
+_MIN_SCORE_THRESHOLD = 0.40  # Drop Qdrant hits below relevance floor.
+# nomic-embed-text cosine scores below ~0.40 are near-random for typical
+# HR/knowledge-base queries.  Raising the floor ensures only semantically
+# relevant chunks reach the LLM context window.
+
+
+
+def _group_hits_for_context(hits, max_sources: int = 6, max_chunks_per_source: int = 2):
+    """Group chunk-level hits into document-level sources for prompt context.
+
+    We want strong grounding without bloating the prompt:
+    - show up to *max_sources* distinct documents
+    - include up to *max_chunks_per_source* chunks per document
+
+    The UI expects one citation per document, but the model often needs more
+    than one chunk from the same document to answer correctly.
     """
-    deduped: dict[str, Any] = {}
-    ordered_keys: list[str] = []
+    grouped: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
 
     for hit in hits:
         key = _hit_key(hit)
-        existing = deduped.get(key)
-        if existing is None:
-            deduped[key] = hit
-            ordered_keys.append(key)
-            continue
-        if hit.score > existing.score:
-            deduped[key] = hit
+        if key not in grouped:
+            grouped[key] = {
+                "best": hit,
+                "chunks": [],
+            }
+            order.append(key)
+        else:
+            if hit.score > grouped[key]["best"].score:
+                grouped[key]["best"] = hit
 
-    return [deduped[key] for key in ordered_keys]
+        if hit.text and len(grouped[key]["chunks"]) < max_chunks_per_source:
+            grouped[key]["chunks"].append(hit.text)
+
+        if len(order) >= max_sources and all(
+            len(grouped[k]["chunks"]) >= max_chunks_per_source for k in order
+        ):
+            break
+
+    # Preserve retrieval order, capped to max_sources.
+    return [grouped[key] for key in order[:max_sources]]
 
 
 async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
@@ -142,6 +161,13 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
     history = await list_recent_messages(conversation_id, limit=6)
     await insert_message(conversation_id, "user", question)
 
+    llm_question = question
+    # Note: follow-up expansion is handled at the *retrieval* level via
+    # build_retrieval_query().  The LLM naturally handles follow-ups through
+    # conversation history — we do NOT mangle the user turn here.
+    # The old "Elaborate on the previous answer. {question}" injection was
+    # syntactically confusing to the model and caused double-instruction issues.
+
     try:
         retrieval_query = build_retrieval_query(question, history)
         vector = await embed(f"search_query: {retrieval_query}")
@@ -150,9 +176,12 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         yield _sse({"type": "error", "message": str(exc)})
         return
 
-    hits = await search_similar(vector, limit=12, allowed_visibility=allowed_visibility)
+    hits = await search_similar(vector, limit=20, allowed_visibility=allowed_visibility)
+    # Drop obviously irrelevant hits before reranking.
+    hits = [h for h in hits if h.score >= _MIN_SCORE_THRESHOLD]
     hits = rerank_hits(question, hits)
-    cited_hits = _dedupe_hits_for_citations(hits)
+    grouped_sources = _group_hits_for_context(hits, max_sources=6, max_chunks_per_source=3)
+    cited_hits = [source["best"] for source in grouped_sources]
 
     if cited_hits:
         log.info(
@@ -169,24 +198,77 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
             extra={"conversation_id": conversation_id, "hit_count": 0},
         )
 
-    context = "\n\n".join(
-        f"[{i + 1}] source: {h.filename or h.source_path or h.document_id}\n{h.text.replace('search_document:', '', 1).strip()}"
-        for i, h in enumerate(cited_hits)
-        if h.text
-    )
+    context_blocks: list[str] = []
+    for i, source in enumerate(grouped_sources):
+        best = source["best"]
+        chunks = source["chunks"]
+        if not chunks:
+            continue
+        label = best.filename or best.source_path or best.document_id
+        block_lines: list[str] = [f"[{i + 1}] {label}"]
+        for j, chunk in enumerate(chunks):
+            # Strip the Nomic search_document prefix before sending to LLM.
+            clean = chunk
+            if clean.startswith("search_document:"):
+                clean = clean[len("search_document:"):].strip()
+            if j > 0:
+                # Separator between chunks from the same source so the LLM
+                # can distinguish passage boundaries rather than seeing a wall
+                # of text.
+                block_lines.append("---")
+            block_lines.append(clean)
+        context_blocks.append("\n".join(block_lines))
+
+    # ── Token budget management ──────────────────────────────────────────────
+    # llama3.1 has an 8 192-token context window.  We estimate tokens as
+    # chars / 4 (standard heuristic for English text) and enforce budgets so
+    # the system prompt rules are never silently truncated by the model.
+    #
+    # Budget allocation (tokens):
+    #   System prompt static text  ~  400
+    #   Context blocks             ~ 2 500   ← trimmed below if needed
+    #   Conversation history       ~ 1 200   ← oldest messages dropped first
+    #   Current question           ~   200
+    #   Output buffer              ~ 1 500
+    #   Safety headroom            ~  392
+    #   ─────────────────────────────────
+    #   Total                      ~ 8 192
+    _CHARS_PER_TOKEN = 4
+    _CONTEXT_CHAR_BUDGET = 2500 * _CHARS_PER_TOKEN   # 10 000 chars
+    _HISTORY_CHAR_BUDGET = 1200 * _CHARS_PER_TOKEN   # 4  800 chars
+
+    def _trim_to_token_budget(blocks: list[str], budget_chars: int) -> str:
+        """Join blocks until the char budget is exhausted; drop remaining."""
+        kept: list[str] = []
+        used = 0
+        for block in blocks:
+            if used + len(block) > budget_chars:
+                log.warning(
+                    "context_trimmed",
+                    extra={"dropped_blocks": len(blocks) - len(kept), "budget_chars": budget_chars},
+                )
+                break
+            kept.append(block)
+            used += len(block)
+        return "\n\n".join(kept)
+
+    context = _trim_to_token_budget(context_blocks, _CONTEXT_CHAR_BUDGET)
+
     system_prompt = (
-        "You are RKive, a strictly grounded internal knowledge assistant for R Systems. "
-        "Your ONLY job is to answer questions using the document Context provided below.\n\n"
+        "You are RKive, an internal knowledge assistant for R Systems International. "
+        "Answer using ONLY the document excerpts in the Context section below.\n\n"
         "RULES:\n"
-        "1. ONLY use information from the Context section. DO NOT use external knowledge.\n"
-        "2. If the Context DOES NOT contain the answer to the user's question, you MUST respond EXACTLY with this sentence and nothing else: "
+        "1. Base your answer solely on the provided Context. Do not invent facts.\n"
+        "2. If the Context does not contain enough information, say: "
         "'I don't have that information in the knowledge base. Please contact the relevant team.'\n"
-        "3. You may respond naturally to greetings (hi, hello) but still mention you use the knowledge base.\n"
-        "4. Always cite your sources using bracket numbers like [1] at the end of the relevant sentence.\n"
-        "5. If a user asks about personal employee data (leave balance, salary, performance review, payslips), "
-        "respond EXACTLY with this sentence and nothing else: 'For personal HR information, please log in to the MyRSystems portal and navigate to the MyHR section.'\n"
-        "6. Keep your answer concise and professional. Do not add extra commentary.\n\n"
-        f"Context:\n{context or '(No relevant documents found in the knowledge base.)'}"
+        "3. Cite sources with bracket numbers like [1] after each relevant sentence.\n"
+        "4. If the user asks about THEIR OWN personal HR data — specifically using words like "
+        "'my salary', 'my leave balance', 'my payslip', 'my performance review' — say: "
+        "'For personal HR information, please log in to the MyRSystems portal and navigate to the MyHR section.' "
+        "General policy questions (e.g. 'how many leave days do employees get?') should be answered from the Context.\n"
+        "5. Match response length to the question: detailed policy questions deserve comprehensive answers "
+        "with bullet points or numbered lists; simple lookups should be concise. Always be professional.\n\n"
+        f"Context:\n{context or '(No relevant documents found.)'}"
     )
 
     citations = [
@@ -200,13 +282,28 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
     ]
 
     assistant_content = ""
+    # Build messages: system prompt + conversation history (budget-capped) + question.
+    llm_messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+    # Trim history to budget: keep the most recent messages, drop oldest first.
+    history_chars = 0
+    capped_history: list[dict] = []
+    for msg in reversed(history):
+        role_h = str(msg.get("role", "")).lower()
+        content_h = str(msg.get("content", "")).strip()
+        if role_h in ("user", "assistant") and content_h:
+            if history_chars + len(content_h) <= _HISTORY_CHAR_BUDGET:
+                capped_history.append({"role": role_h, "content": content_h})
+                history_chars += len(content_h)
+            else:
+                log.warning("history_trimmed", extra={"dropped_from": "oldest"})
+                break
+    for msg in reversed(capped_history):
+        llm_messages.append(msg)
+
+    llm_messages.append({"role": "user", "content": llm_question})
     try:
-        async for token in chat_stream(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ]
-        ):
+        async for token in chat_stream(llm_messages):
             assistant_content += token
             yield _sse({"type": "token", "text": token})
     except Exception as exc:
@@ -268,210 +365,3 @@ async def get_conversation_messages(conversation_id: str):
     return {"messages": messages}
 
 
-@router.websocket("/ws")
-async def chat(ws: WebSocket):
-    """
-    Streaming RAG chat over WebSocket.
-
-    Client sends:
-        {"type": "chat", "content": "<question>", "conversationId": "<uuid|null>"}
-
-    Server sends (in order):
-        {"type": "conversation", "id": "<uuid>"}   – only on new conversation
-        {"type": "token", "text": "…"}              – one per streamed token
-        {"type": "citations", "citations": […]}
-        {"type": "done"}
-    or:
-        {"type": "error", "message": "…"}
-    """
-    await ws.accept()
-    log.info("websocket_connected")
-
-    try:
-        while True:
-            # ── receive ──────────────────────────────────────────────────────
-            try:
-                payload = json.loads(await ws.receive_text())
-            except json.JSONDecodeError:
-                await ws.send_text(_msg(type="error", message="invalid JSON"))
-                log.warning("invalid_json_payload")
-                continue
-
-            if payload.get("type") != "chat" or not str(payload.get("content", "")).strip():
-                await ws.send_text(_msg(type="error", message="expected chat message"))
-                log.warning(
-                    "invalid_chat_payload",
-                    extra={"payload_type": payload.get("type")},
-                )
-                continue
-
-            raw_input = str(payload["content"]).strip()
-            # -- Prompt injection defence --
-            question = raw_input
-
-            conversation_id: str | None = payload.get("conversationId") or None
-            role = _safe_get_str(payload, "role") or "employee"
-            visibility = _safe_get_str(payload, "visibility") or DEFAULT_VISIBILITY
-
-            # Visibility is enforced during retrieval, not by the LLM prompt.
-            # That means private chunks are filtered out before they can even
-            # reach the model context window.
-            allowed_visibility = [ORG_PUBLIC]
-            if role == "Sales Representative":
-                allowed_visibility = [ORG_PUBLIC, SALES_PRIVATE]
-            elif role == "Standard Employee":
-                allowed_visibility = [ORG_PUBLIC]
-
-            log.info(
-                "chat_message_received",
-                extra={
-                    "conversation_id": conversation_id,
-                    "role": role,
-                    "visibility": visibility,
-                    "question_len": len(question),
-                    "question_preview": _preview(question),
-                },
-            )
-
-            # ── ensure vector collection exists ───────────────────────────────
-            try:
-                await ensure_collection(get_embedding_dim())
-            except Exception as exc:
-                await ws.send_text(_msg(type="error", message=str(exc)))
-                log.exception("ensure_collection_failed")
-                continue
-
-            # ── conversation bookkeeping ──────────────────────────────────────
-            if not conversation_id:
-                conversation_id = await create_conversation()
-                await ws.send_text(_msg(type="conversation", id=conversation_id))
-                log.info(
-                    "conversation_created",
-                    extra={"conversation_id": conversation_id},
-                )
-
-            history = await list_recent_messages(conversation_id, limit=6)
-            await insert_message(conversation_id, "user", question)
-
-            # ── embed + retrieve ──────────────────────────────────────────────
-            try:
-                retrieval_query = build_retrieval_query(question, history)
-                # The query uses the search_query prefix because some embedding
-                # models work better when document and query embeddings are
-                # labelled with their different roles.
-                vector = await embed(f"search_query: {retrieval_query}")
-            except Exception as exc:
-                await ws.send_text(_msg(type="error", message=str(exc)))
-                log.exception(
-                    "embedding_failed",
-                    extra={"conversation_id": conversation_id},
-                )
-                continue
-
-            # First-stage retrieval favors recall: ask Qdrant for more chunks
-            # than we actually want to show the LLM, then narrow them down with
-            # a cheaper second-stage rerank.
-            hits = await search_similar(vector, limit=12, allowed_visibility=allowed_visibility)
-            hits = rerank_hits(question, hits)
-            cited_hits = _dedupe_hits_for_citations(hits)
-
-            if cited_hits:
-                log.info(
-                    "retrieval_hits",
-                    extra={
-                        "conversation_id": conversation_id,
-                        "hit_count": len(cited_hits),
-                        "top_score": cited_hits[0].score,
-                    },
-                )
-            else:
-                log.info(
-                    "retrieval_hits",
-                    extra={"conversation_id": conversation_id, "hit_count": 0},
-                )
-
-            context = "\n\n".join(
-                f"[{i + 1}] source: {h.filename or h.source_path or h.document_id}\n{h.text.replace('search_document:', '', 1).strip()}"
-                for i, h in enumerate(cited_hits)
-                if h.text
-            )
-            # The system prompt is intentionally strict: the model is told to
-            # answer only from retrieved context and to use a fixed fallback
-            # message when the knowledge base does not contain the answer.
-            system_prompt = (
-                "You are RKive, a strictly grounded internal knowledge assistant for R Systems. "
-                "Your ONLY job is to answer questions using the document Context provided below.\n\n"
-                "RULES:\n"
-                "1. ONLY use information from the Context section. DO NOT use external knowledge.\n"
-                "2. If the Context DOES NOT contain the answer to the user's question, you MUST respond EXACTLY with this sentence and nothing else: "
-                "'I don't have that information in the knowledge base. Please contact the relevant team.'\n"
-                "3. You may respond naturally to greetings (hi, hello) but still mention you use the knowledge base.\n"
-                "4. Always cite your sources using bracket numbers like [1] at the end of the relevant sentence.\n"
-                "5. If a user asks about personal employee data (leave balance, salary, performance review, payslips), "
-                "respond EXACTLY with this sentence and nothing else: 'For personal HR information, please log in to the MyRSystems portal and navigate to the MyHR section.'\n"
-                "6. Keep your answer concise and professional. Do not add extra commentary.\n\n"
-                f"Context:\n{context or '(No relevant documents found in the knowledge base.)'}"
-            )
-
-            citations = [
-                Citation(
-                    document_id=h.document_id,
-                    source_path=h.source_path,
-                    score=h.score,
-                    filename=h.filename,
-                )
-                for h in cited_hits
-            ]
-
-            # ── stream response ───────────────────────────────────────────────
-            assistant_content = ""
-            try:
-                async for token in chat_stream(
-                    [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": question},
-                    ]
-                ):
-                    assistant_content += token
-                    await ws.send_text(_msg(type="token", text=token))
-            except Exception as exc:
-                await ws.send_text(_msg(type="error", message=str(exc)))
-                log.exception(
-                    "chat_stream_failed",
-                    extra={"conversation_id": conversation_id},
-                )
-                continue
-
-            await insert_message(conversation_id, "assistant", assistant_content)
-            log.info(
-                "assistant_message_saved",
-                extra={
-                    "conversation_id": conversation_id,
-                    "assistant_len": len(assistant_content),
-                },
-            )
-
-            send_citations = not _is_no_info_response(assistant_content)
-
-            await ws.send_text(
-                _msg(
-                    type="citations",
-                    citations=(
-                        [
-                            {
-                                "documentId": c.document_id,
-                                "sourcePath": c.source_path,
-                                "score": c.score,
-                                "filename": c.filename,
-                            }
-                            for c in citations
-                        ]
-                        if send_citations
-                        else []
-                    ),
-                )
-            )
-            await ws.send_text(_msg(type="done"))
-
-    except WebSocketDisconnect:
-        log.info("websocket_disconnected")

@@ -13,3 +13,5 @@ __pycache__
 *.pyc
 *.tsbuildinfo
 .cursor
+
+.hf_cache/

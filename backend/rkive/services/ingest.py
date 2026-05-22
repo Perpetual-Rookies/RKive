@@ -58,7 +58,48 @@ def _split_large_paragraph(paragraph: str, max_chars: int, overlap: int) -> list
     return parts
 
 
-def chunk_markdown(text: str, max_chars: int = 1200, overlap: int = 180) -> list[str]:
+def _extract_heading(section: str) -> str:
+    """Return the leading markdown heading line from a section, or empty string."""
+    first_line = section.lstrip().split("\n")[0]
+    if re.match(r"^#{1,6}\s", first_line):
+        return first_line.strip()
+    return ""
+
+
+def _sentence_aware_carry(text: str, overlap: int) -> str:
+    """Extract a carry snippet that starts at a sentence boundary.
+
+    Rather than slicing the raw last *overlap* characters (which can land
+    mid-word or mid-sentence), we look for the last sentence-ending punctuation
+    within the overlap window and start the carry from the sentence that follows
+    it.  This gives the next chunk a coherent, complete opening sentence instead
+    of a fragment.
+
+    Falls back to the raw character slice if no boundary is found.
+    """
+    if len(text) <= overlap:
+        return text.strip()
+
+    window = text[-overlap:]
+    # Find the last sentence boundary within the window
+    boundary = max(
+        window.rfind(". "),
+        window.rfind(".\n"),
+        window.rfind("? "),
+        window.rfind("! "),
+        window.rfind(";\n"),
+    )
+    if boundary != -1 and boundary < len(window) - 1:
+        # Carry starts at the sentence that follows the boundary
+        return window[boundary + 2:].strip()
+    # No boundary found — fall back to raw slice from a word boundary
+    space = window.rfind(" ")
+    if space != -1:
+        return window[space + 1:].strip()
+    return window.strip()
+
+
+def chunk_markdown(text: str, max_chars: int = 1500, overlap: int = 200) -> list[str]:
     """
     Split *text* into semantically coherent chunks.
 
@@ -66,7 +107,9 @@ def chunk_markdown(text: str, max_chars: int = 1200, overlap: int = 180) -> list
     1. Split on markdown headings (preserving the heading line).
     2. If a section still exceeds *max_chars*, further split on blank lines.
     3. If a paragraph alone exceeds *max_chars*, split near sentence-ish
-       boundaries and keep a small overlap into the next chunk.
+       boundaries with sentence-aware overlap into the next chunk.
+    4. The section heading is prepended to *every* sub-chunk produced from
+       that section, so retrieval quality is not lost on later paragraphs.
 
     The main goal is retrieval quality, not perfect markdown preservation.
     Smaller, focused chunks generally retrieve better than one very large block.
@@ -74,7 +117,12 @@ def chunk_markdown(text: str, max_chars: int = 1200, overlap: int = 180) -> list
     text = text.strip()
     if not text:
         return []
+    result = _chunk_with_heading_context(text, max_chars, overlap)
+    return [c for c in result if c.strip()]
 
+
+def _chunk_with_heading_context(text: str, max_chars: int, overlap: int) -> list[str]:
+    """Internal implementation that attaches headings to all sub-chunks."""
     sections = re.split(r"(?m)(?=^#{1,6}\s)", text)
     chunks: list[str] = []
 
@@ -82,12 +130,17 @@ def chunk_markdown(text: str, max_chars: int = 1200, overlap: int = 180) -> list
         sec = sec.strip()
         if not sec:
             continue
+
+        heading = _extract_heading(sec)
+
         if len(sec) <= max_chars:
             chunks.append(sec)
             continue
 
         paras = re.split(r"\n\n+", sec)
         buf = ""
+        section_chunks: list[str] = []
+
         for para in paras:
             para = para.strip()
             if not para:
@@ -99,37 +152,67 @@ def chunk_markdown(text: str, max_chars: int = 1200, overlap: int = 180) -> list
                     continue
 
                 if buf:
-                    chunks.append(buf)
-                    carry = buf[-overlap:].strip()
+                    section_chunks.append(buf)
+                    # Use sentence-aware carry so the next chunk begins at a
+                    # clean sentence boundary, not mid-fragment.
+                    carry = _sentence_aware_carry(buf, overlap)
                     buf = f"{carry}\n\n{para_part}".strip() if carry else para_part
                 else:
                     buf = para_part
 
                 if len(buf) > max_chars:
                     para_splits = _split_large_paragraph(buf, max_chars, overlap)
-                    chunks.extend(para_splits[:-1])
+                    section_chunks.extend(para_splits[:-1])
                     buf = para_splits[-1]
+
         if buf:
-            chunks.append(buf)
+            section_chunks.append(buf)
 
-    return [c for c in chunks if c.strip()]
+        # Prepend heading to every sub-chunk after the first (first already
+        # contains the heading as the section starts with it).
+        for i, chunk in enumerate(section_chunks):
+            if i > 0 and heading and not chunk.startswith(heading):
+                chunk = f"{heading}\n\n{chunk}"
+            chunks.append(chunk)
+
+    return chunks
 
 
-def _embedding_text(chunk: str, filename: str, visibility: str) -> str:
+def _embedding_text(chunk: str, filename: str) -> str:
     """Build the text sent to the embedding model for a stored document chunk.
 
-    We include a small amount of metadata in the embedded text because the
-    vector store only understands numbers produced by the embedding model.  If
-    the filename or visibility label is semantically useful to retrieval, it
-    needs to be present at embedding time; storing it only in payload metadata
-    is not enough for semantic search.
+    We embed the chunk content (and optionally the filename) but **do not** embed
+    the visibility label, because visibility is stored as metadata and filtered
+    separately.
     """
-    return (
-        "search_document: "
-        f"filename: {filename}\n"
-        f"visibility: {visibility}\n"
-        f"content:\n{chunk}"
-    )
+    return f"search_document: {chunk}\nFilename: {filename}"
+
+
+def _extract_document_title(text: str) -> str:
+    """Return the first H1 heading from the document, or empty string.
+
+    Used as a human-readable document title in payloads.  The title helps the
+    LLM attribute answers correctly (e.g. 'From the Leave Policy document...')
+    and improves citation display in the UI.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            return stripped[2:].strip()
+    return ""
+
+
+def _extract_chunk_heading(chunk: str) -> str:
+    """Return the markdown heading that this chunk belongs to, or empty string.
+
+    Since Fix 1.2 guarantees that every sub-chunk starts with its section
+    heading, we can reliably extract it from the first line.
+    """
+    first_line = chunk.lstrip().split("\n")[0].strip()
+    if re.match(r"^#{1,6}\s", first_line):
+        # Strip the markdown '#' symbols to give a clean text label.
+        return re.sub(r"^#{1,6}\s+", "", first_line).strip()
+    return ""
 
 
 async def ingest_file(file_path: str, document_id: str, filename: str, visibility: str = "public") -> int:
@@ -156,8 +239,12 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
     collection_ensured = False
     cleared_existing_points = False
 
+    # Extract document-level metadata once — not per chunk.
+    document_title = _extract_document_title(raw)
+
     for idx, chunk in enumerate(chunks):
-        vec = await embed(_embedding_text(chunk, filename, visibility))
+        emb_text = _embedding_text(chunk, filename)
+        vec = await embed(emb_text)
 
         if not collection_ensured:
             # The vector size depends on the embedding model.  We lazily create
@@ -177,12 +264,20 @@ async def ingest_file(file_path: str, document_id: str, filename: str, visibilit
                 id=str(uuid.uuid4()),
                 vector=vec,
                 payload={
-                    # Payload fields are not embedded; they are stored as plain
-                    # metadata for filtering, citation display, and debugging.
+                    # ── Content ────────────────────────────────────────────
+                    # text: the raw chunk shown to the LLM and UI.
+                    # embedding_text: the exact string sent to the embedding
+                    #   model (includes nomic prefix + filename hint).  Stored
+                    #   for auditability and future re-indexing without drift.
                     "text": chunk[:8000],
+                    "embedding_text": emb_text[:8000],
+                    # ── Document metadata ──────────────────────────────────
                     "document_id": document_id,
+                    "document_title": document_title,
                     "source_path": file_path,
                     "filename": filename,
+                    # ── Chunk metadata ─────────────────────────────────────
+                    "section_heading": _extract_chunk_heading(chunk),
                     "visibility": visibility,
                     "chunk_index": idx,
                     "chunk_hash": hashlib.sha256(chunk.encode()).hexdigest()[:16],

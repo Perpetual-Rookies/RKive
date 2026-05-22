@@ -10,15 +10,35 @@ COPY --from=uvbin /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Install Python dependencies via uv (layer-cached)
+# Install Python dependencies via uv (layer-cached).
+# sentence-transformers pulls in torch (~500 MB), so this layer is large
+# but only rebuilds when pyproject.toml / uv.lock changes.
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv pip install --system -r pyproject.toml
 
-# Copy application source
+# ── Pre-download the cross-encoder reranker model ───────────────────────────
+# BAAI/bge-reranker-base (~280 MB) is downloaded once at build time and baked
+# into the image layer.  This means:
+#   - Zero startup delay for the reranker on container boot.
+#   - No outbound network calls at runtime (air-gapped friendly).
+#   - The model layer is cached by Docker so rebuilds are fast.
+# HF_HOME controls where Hugging Face caches models inside the image.
+ENV HF_HOME=/app/.hf_cache
+RUN python - <<'EOF'
+from sentence_transformers import CrossEncoder
+print("Downloading BAAI/bge-reranker-base …")
+CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+print("Model download complete.")
+EOF
+
+# Copy application source (after model download so source changes don't
+# invalidate the large model layer above).
 COPY backend/ ./
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=3001
+# Keep HF_HOME consistent at runtime so the cached model is found.
+ENV HF_HOME=/app/.hf_cache
 EXPOSE 3001
 
 CMD ["uvicorn", "rkive.main:app", "--host", "0.0.0.0", "--port", "3001", "--reload"]

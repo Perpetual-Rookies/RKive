@@ -12,6 +12,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         existing_doc = {
             "id": "doc-existing",
             "storage_path": "/tmp/existing-policy.md",
+            "visibility": "Org Level (Public)",
         }
 
         with (

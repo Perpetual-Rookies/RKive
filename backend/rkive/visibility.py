@@ -15,10 +15,12 @@ VISIBILITY_ALIASES = {
     "public": ORG_PUBLIC,
     "org": ORG_PUBLIC,
     "org-public": ORG_PUBLIC,
+    "org_public": ORG_PUBLIC,
     "org level (public)": ORG_PUBLIC,
     "private": SALES_PRIVATE,
     "sales": SALES_PRIVATE,
     "sales-private": SALES_PRIVATE,
+    "sales_private": SALES_PRIVATE,
     "sales project (private)": SALES_PRIVATE,
 }
 

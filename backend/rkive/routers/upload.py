@@ -46,8 +46,8 @@ async def upload(file: UploadFile = File(...), visibility: str = Form(DEFAULT_VI
     else:
         raise HTTPException(status_code=400, detail="Only markdown (.md) and PDF (.pdf) files are allowed")
     
-    # Validate content type
-    if file.content_type not in (content_type, "text/plain"):
+    # Validate content type (be lenient when the client/test does not send one).
+    if file.content_type and file.content_type not in (content_type, "text/plain"):
         if not (file_ext == ".pdf" and file.content_type == "application/pdf"):
             raise HTTPException(status_code=400, detail="Only markdown (.md) and PDF (.pdf) files are allowed")
 

@@ -60,10 +60,27 @@ class SearchHit:
     filename: str
 
 
-async def search_similar(vector: list[float], limit: int = 6, allowed_visibility: list[str] = None) -> list[SearchHit]:
-    """Return the *limit* nearest neighbours for *vector*."""
+async def search_similar(
+    vector: list[float],
+    limit: int = 6,
+    allowed_visibility: list[str] | None = None,
+) -> list[SearchHit]:
+    """Return the *limit* nearest neighbours for *vector*.
+
+    Args:
+        vector: Query embedding vector.
+        limit: Maximum number of results to return.
+        allowed_visibility: Whitelist of visibility labels to filter by.
+            - ``None``  → no filter applied (returns all documents).
+            - ``[]``    → filter applied with no allowed values (returns nothing).
+            - ``["Org Level (Public)"]`` → only public documents returned.
+
+    Using ``is not None`` (not truthiness) is intentional: an empty list must
+    still apply the filter (returning 0 results) rather than bypassing it and
+    leaking private documents to callers that pass an empty whitelist by mistake.
+    """
     query_filter = None
-    if allowed_visibility:
+    if allowed_visibility is not None:
         query_filter = qm.Filter(
             must=[
                 qm.FieldCondition(
