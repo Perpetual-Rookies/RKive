@@ -49,13 +49,13 @@ function formatDate(dateStr: string | null): string {
 
 function roleDescription(role: AppRole): string {
   return role === "Sales Representative"
-    ? "Access to org-wide and sales-private content."
+    ? "Access to org-wide and sales content."
     : "Access to org-wide public content only.";
 }
 
 function roleScope(role: AppRole): string {
   return role === "Sales Representative"
-    ? "Org knowledge + sales-private sources"
+    ? "Org knowledge + sales sources"
     : "Org-level public sources only";
 }
 
@@ -79,9 +79,21 @@ export default function KnowledgeBase({
         <PageBrand />
         <div className="page-toolbar-actions">
           <button type="button" className="icon-button" onClick={onBack} aria-label="Back to chat">
-            <span className="icon-button-glyph" aria-hidden="true">
-              ←
-            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="icon-button-glyph"
+              aria-hidden="true"
+            >
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
             <span>Chat</span>
           </button>
         </div>
@@ -130,21 +142,59 @@ export default function KnowledgeBase({
               Access
             </span>
           </div>
-          <label className="field-label" htmlFor="kb-role-select">
-            Role
-          </label>
-          <select
-            id="kb-role-select"
-            className="select"
-            value={role}
-            onChange={(event) => onRoleChange(event.target.value as AppRole)}
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <span className="field-label">Role</span>
+          <div className="visibility-toggle-group">
+            {ROLE_OPTIONS.map((option) => {
+              const isSelected = role === option;
+              const isSalesRep = option === "Sales Representative";
+              const label = isSalesRep ? "Sales Rep" : "Employee";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`toggle-button ${isSelected ? "is-selected" : ""} ${isSalesRep ? "is-private" : "is-public"}`}
+                  onClick={() => onRoleChange(option)}
+                >
+                  {isSalesRep ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
           <p className="section-copy">{roleDescription(role)}</p>
           <div className="scope-banner">
             <span className="scope-label">Scope</span>
@@ -177,21 +227,58 @@ export default function KnowledgeBase({
               Documents
             </button>
           </div>
-          <label className="field-label" htmlFor="kb-visibility-select">
-            Visibility
-          </label>
-          <select
-            id="kb-visibility-select"
-            className="select"
-            value={visibility}
-            onChange={(event) => onVisibilityChange(event.target.value as Visibility)}
-          >
-            {VISIBILITY_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <span className="field-label">Visibility</span>
+          <div className="visibility-toggle-group">
+            {VISIBILITY_OPTIONS.map((option) => {
+              const isSelected = visibility === option;
+              const isPrivate = option === "Sales Project (Private)";
+              const label = isPrivate ? "Sales" : "Public";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`toggle-button ${isSelected ? "is-selected" : ""} ${isPrivate ? "is-private" : "is-public"}`}
+                  onClick={() => onVisibilityChange(option)}
+                >
+                  {isPrivate ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
           <label className="upload-button" htmlFor="kb-document-upload">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -218,7 +305,17 @@ export default function KnowledgeBase({
             className="file-input"
             onChange={onUpload}
           />
-          {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
+          {uploadStatus && (
+            <p className={`upload-status ${
+              uploadStatus.includes("successfully") || uploadStatus.includes("Indexed")
+                ? "is-success"
+                : uploadStatus.includes("Uploading") || uploadStatus.includes("indexing")
+                  ? "is-loading"
+                  : "is-error"
+            }`}>
+              {uploadStatus}
+            </p>
+          )}
         </section>
 
         <section className="sidebar-card">
@@ -286,7 +383,7 @@ export default function KnowledgeBase({
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                private
+                sales
               </span>
             </div>
             <div className="mini-stat">
@@ -379,7 +476,7 @@ export default function KnowledgeBase({
                     <div className="recent-item-info">
                       <p className="recent-item-title">{doc.filename}</p>
                       <p className="recent-item-meta">
-                        {doc.file_type} · {doc.visibility}
+                        {doc.file_type} · {doc.visibility === "Sales Project (Private)" ? "Sales" : "Public"}
                       </p>
                     </div>
                   </div>

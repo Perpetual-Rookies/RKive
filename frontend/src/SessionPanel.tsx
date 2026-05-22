@@ -15,7 +15,7 @@ type SessionPanelProps = {
 
 function roleScope(role: AppRole): string {
   return role === "Sales Representative"
-    ? "Org knowledge + sales-private sources"
+    ? "Org knowledge + sales sources"
     : "Org-level public sources only";
 }
 
@@ -80,36 +80,77 @@ export default function SessionPanel({
         </span>
       </div>
 
-      <div className="header-panel-row">
-        <span className="sidebar-label-group">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="sidebar-row-icon"
-          >
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          <span className="panel-label">Role</span>
-        </span>
-        {onRoleChange ? (
-          <select
-            className="sidebar-select"
-            value={role}
-            onChange={(e) => onRoleChange(e.target.value as AppRole)}
-          >
-            <option value="Standard Employee">Standard Employee</option>
-            <option value="Sales Representative">Sales Representative</option>
-          </select>
-        ) : (
-          <span className="panel-value">{role}</span>
+      <div className="sidebar-role-section" style={{ padding: "0.55rem 0", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem" }}>
+          <span className="sidebar-label-group">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="sidebar-row-icon"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span className="panel-label">Role</span>
+          </span>
+          {!onRoleChange && <span className="panel-value">{role}</span>}
+        </div>
+        {onRoleChange && (
+          <div className="visibility-toggle-group" style={{ margin: 0 }}>
+            <button
+              type="button"
+              className={`toggle-button ${role === "Standard Employee" ? "is-selected is-public" : ""}`}
+              onClick={() => onRoleChange("Standard Employee")}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="toggle-button-icon"
+              >
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              <span>Employee</span>
+            </button>
+            <button
+              type="button"
+              className={`toggle-button ${role === "Sales Representative" ? "is-selected is-private" : ""}`}
+              onClick={() => onRoleChange("Sales Representative")}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="toggle-button-icon"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <span>Sales Rep</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -134,7 +175,45 @@ export default function SessionPanel({
           <span className="panel-label">Visibility</span>
         </span>
         <span className={`visibility-badge ${visibility === "Sales Project (Private)" ? "is-private" : "is-public"}`}>
-          {visibility}
+          {visibility === "Sales Project (Private)" ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="badge-icon"
+              style={{ marginRight: "0.25rem" }}
+              aria-hidden="true"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="badge-icon"
+              style={{ marginRight: "0.25rem" }}
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+          )}
+          <span>{visibility === "Sales Project (Private)" ? "Sales" : "Public"}</span>
         </span>
       </div>
 

@@ -156,16 +156,39 @@ export default function Files({ onBack }: FilesProps) {
     return { publicDocs, privateDocs, pdfs, markdown };
   }, [documents]);
 
+  const filterCounts = useMemo(() => {
+    const all = documents.length;
+    const publicDocs = documents.filter((doc) => doc.visibility === VISIBILITY_OPTIONS[0]).length;
+    const privateDocs = documents.filter((doc) => doc.visibility === VISIBILITY_OPTIONS[1]).length;
+    return {
+      All: all,
+      [VISIBILITY_OPTIONS[0]]: publicDocs,
+      [VISIBILITY_OPTIONS[1]]: privateDocs,
+    };
+  }, [documents]);
+
   return (
     <div className="files-page">
       <header className="page-toolbar">
         <PageBrand />
         <div className="page-toolbar-actions">
           {onBack && (
-            <button className="icon-button" onClick={onBack} type="button">
-              <span className="icon-button-glyph" aria-hidden="true">
-                ←
-              </span>
+            <button className="icon-button" onClick={onBack} type="button" aria-label="Back to knowledge base">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="icon-button-glyph"
+                aria-hidden="true"
+              >
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
               <span>Knowledge base</span>
             </button>
           )}
@@ -260,7 +283,7 @@ export default function Files({ onBack }: FilesProps) {
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                private
+                sales
               </span>
             </div>
             <div className="mini-stat">
@@ -309,21 +332,58 @@ export default function Files({ onBack }: FilesProps) {
               Upload source
             </span>
           </div>
-          <label className="field-label" htmlFor="library-visibility">
-            Visibility
-          </label>
-          <select
-            id="library-visibility"
-            className="select"
-            value={visibility}
-            onChange={(event) => setVisibility(event.target.value as Visibility)}
-          >
-            {VISIBILITY_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <span className="field-label">Visibility</span>
+          <div className="visibility-toggle-group">
+            {VISIBILITY_OPTIONS.map((option) => {
+              const isSelected = visibility === option;
+              const isPrivate = option === "Sales Project (Private)";
+              const label = isPrivate ? "Sales" : "Public";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`toggle-button ${isSelected ? "is-selected" : ""} ${isPrivate ? "is-private" : "is-public"}`}
+                  onClick={() => setVisibility(option)}
+                >
+                  {isPrivate ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="toggle-button-icon"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
           <label className="upload-button" htmlFor="library-upload">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -351,7 +411,17 @@ export default function Files({ onBack }: FilesProps) {
             onChange={onUpload}
             disabled={uploading}
           />
-          {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
+          {uploadStatus && (
+            <p className={`upload-status ${
+              uploadStatus.includes("successfully") || uploadStatus.includes("Indexed")
+                ? "is-success"
+                : uploadStatus.includes("Uploading") || uploadStatus.includes("indexing")
+                  ? "is-loading"
+                  : "is-error"
+            }`}>
+              {uploadStatus}
+            </p>
+          )}
         </section>
 
       </aside>
@@ -395,23 +465,50 @@ export default function Files({ onBack }: FilesProps) {
         </header>
 
         <section className="library-toolbar">
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="composer-input toolbar-search"
-            placeholder="Filter by filename, type, or visibility"
-          />
+          <div className="search-wrapper">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="search-icon"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="composer-input toolbar-search"
+              placeholder="Filter by filename, type, or visibility..."
+            />
+          </div>
           <div className="filter-row">
-            {(["All", ...VISIBILITY_OPTIONS] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={`filter-chip ${activeVisibility === option ? "is-active" : ""}`}
-                onClick={() => setActiveVisibility(option)}
-              >
-                {option}
-              </button>
-            ))}
+            {(["All", ...VISIBILITY_OPTIONS] as const).map((option) => {
+              const label =
+                option === "All"
+                  ? "All sources"
+                  : option === "Org Level (Public)"
+                    ? "Public"
+                    : "Sales";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`filter-chip ${activeVisibility === option ? "is-active" : ""}`}
+                  onClick={() => setActiveVisibility(option)}
+                >
+                  <span>{label}</span>
+                  <span className="filter-chip-count">{filterCounts[option]}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -470,8 +567,8 @@ export default function Files({ onBack }: FilesProps) {
           <section className="document-grid">
             {filteredDocuments.map((doc) => (
               <article key={doc.id} className="document-card">
-                <div className="document-card-top">
-                  <div className="document-card-header">
+                <div className="document-card-body">
+                  <div className="document-card-info">
                     <div className="recent-item-icon">
                       {doc.file_type === "PDF" ? (
                         <svg
@@ -507,11 +604,51 @@ export default function Files({ onBack }: FilesProps) {
                       )}
                     </div>
                     <div className="document-card-title-group">
-                      <span className="doc-type-badge">{doc.file_type}</span>
-                      <h3>{doc.filename}</h3>
+                      <h3 className="document-filename" title={doc.filename}>{doc.filename}</h3>
                     </div>
                   </div>
-                  <span className="doc-visibility">{doc.visibility}</span>
+                  <div className="document-card-badges">
+                    <span className="doc-type-badge">{doc.file_type}</span>
+                    <span className={`visibility-badge ${doc.visibility === "Sales Project (Private)" ? "is-private" : "is-public"}`}>
+                      {doc.visibility === "Sales Project (Private)" ? (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="badge-icon"
+                          aria-hidden="true"
+                        >
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="badge-icon"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="2" y1="12" x2="22" y2="12"></line>
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                        </svg>
+                      )}
+                      <span>{doc.visibility === "Sales Project (Private)" ? "Sales" : "Public"}</span>
+                    </span>
+                  </div>
                 </div>
                 <div className="document-card-meta">
                   <span>Indexed {formatDate(doc.created_at)}</span>
