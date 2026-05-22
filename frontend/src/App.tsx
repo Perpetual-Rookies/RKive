@@ -297,16 +297,47 @@ export default function App() {
           throw new Error(`Failed to load conversation (${res.status})`);
         }
         const data = (await res.json()) as {
-          messages?: Array<{ role: Role; content: string }>;
+          messages?: Array<{
+            role: Role;
+            content: string;
+            citations?: Array<{
+              documentId?: string;
+              document_id?: string;
+              sourcePath?: string;
+              source_path?: string;
+              score?: number;
+              filename?: string;
+            }>;
+          }>;
         };
         if (!active) return;
         setMessages(
-          (data.messages ?? []).map((msg) => ({
-            id: crypto.randomUUID(),
-            role: msg.role,
-            content: msg.content,
-            streaming: false,
-          })),
+          (data.messages ?? []).map((msg) => {
+            const rawCitations = Array.isArray(msg.citations) ? msg.citations : [];
+            const citations = rawCitations
+              .map((c) => {
+                const docId = c.documentId || c.document_id || "";
+                const srcPath = c.sourcePath || c.source_path || "";
+                const score = typeof c.score === "number" ? c.score : 0;
+                const filename = c.filename || "";
+                if (!docId && !srcPath) return null;
+                return {
+                  documentId: docId,
+                  sourcePath: srcPath,
+                  score,
+                  filename,
+                } satisfies Citation;
+              })
+              .filter((c): c is Citation => c !== null);
+
+            return {
+              id: crypto.randomUUID(),
+              role: msg.role,
+              content: msg.content,
+              streaming: false,
+              citations: citations.length > 0 ? citations : undefined,
+            };
+          }),
         );
       } catch (err) {
         if (!active) return;

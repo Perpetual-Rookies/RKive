@@ -1,5 +1,7 @@
 """Repository for conversations and messages (raw SQL via psycopg3)."""
 
+import json
+from typing import Optional, Any
 from rkive.db import get_conn
 
 
@@ -12,12 +14,18 @@ async def create_conversation() -> str:
     return str(row["id"])
 
 
-async def insert_message(conversation_id: str, role: str, content: str) -> None:
+async def insert_message(
+    conversation_id: str,
+    role: str,
+    content: str,
+    citations: Optional[list[dict[str, Any]]] = None,
+) -> None:
     """Append a message to a conversation."""
     async with get_conn() as conn:
+        citations_json = json.dumps(citations or [])
         await conn.execute(
-            "INSERT INTO messages (conversation_id, role, content) VALUES (%s, %s, %s)",
-            (conversation_id, role, content),
+            "INSERT INTO messages (conversation_id, role, content, citations) VALUES (%s, %s, %s, %s)",
+            (conversation_id, role, content, citations_json),
         )
 
 
@@ -31,7 +39,7 @@ async def list_recent_messages(conversation_id: str, limit: int = 5) -> list[dic
                 '[]'::json
             ) AS messages
             FROM (
-                SELECT role, content, created_at
+                SELECT role, content, citations, created_at
                 FROM messages
                 WHERE conversation_id = %s
                 ORDER BY created_at DESC
@@ -53,7 +61,7 @@ async def list_messages(conversation_id: str) -> list[dict]:
                 '[]'::json
             ) AS messages
             FROM (
-                SELECT role, content, created_at
+                SELECT role, content, citations, created_at
                 FROM messages
                 WHERE conversation_id = %s
                 ORDER BY created_at ASC

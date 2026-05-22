@@ -1,6 +1,6 @@
 import unittest
 
-from rkive.routers.chat import _dedupe_hits_for_citations
+from rkive.routers.chat import _group_hits_for_context
 from rkive.services.qdrant import SearchHit
 from rkive.services.rerank import rerank_hits
 
@@ -31,7 +31,7 @@ class ChatRankingTests(unittest.TestCase):
         self.assertEqual(ranked[0].id, "weak-dense")
         self.assertEqual(len(ranked), 2)
 
-    def test_dedupe_hits_for_citations_keeps_one_highest_score_hit_per_document(self):
+    def test_group_hits_for_context_keeps_one_highest_score_hit_per_document(self):
         hits = [
             SearchHit(
                 id="chunk-1",
@@ -59,8 +59,8 @@ class ChatRankingTests(unittest.TestCase):
             ),
         ]
 
-        deduped = _dedupe_hits_for_citations(hits)
+        grouped = _group_hits_for_context(hits, max_sources=2, max_chunks_per_source=2)
 
-        self.assertEqual(len(deduped), 2)
-        self.assertEqual(deduped[0].id, "chunk-2")
-        self.assertEqual(deduped[1].id, "chunk-3")
+        self.assertEqual(len(grouped), 2)
+        self.assertEqual(grouped[0]["best"].id, "chunk-2")
+        self.assertEqual(grouped[1]["best"].id, "chunk-3")

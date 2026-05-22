@@ -353,7 +353,24 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         citations = []
         send_citations = False
 
-    await insert_message(conversation_id, "assistant", assistant_content)
+    await insert_message(
+        conversation_id,
+        "assistant",
+        assistant_content,
+        citations=(
+            [
+                {
+                    "documentId": c.document_id,
+                    "sourcePath": c.source_path,
+                    "score": c.score,
+                    "filename": c.filename,
+                }
+                for c in citations
+            ]
+            if send_citations
+            else []
+        ),
+    )
     log.info(
         "assistant_message_saved",
         extra={
