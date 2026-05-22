@@ -49,18 +49,66 @@ function apiBase(): string {
   return import.meta.env.VITE_API_BASE ?? "";
 }
 
-function renderInlineMarkdown(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+function formatCitationName(citation: Citation): string {
+  const candidate =
+    citation.filename?.trim() || citation.sourcePath?.trim() || citation.documentId;
+  const pieces = candidate.split(/[\\/]/);
+  return pieces[pieces.length - 1] || candidate || citation.documentId;
+}
 
+function formatCitationScore(score: number): string {
+  if (!Number.isFinite(score)) return "0%";
+  return `${Math.max(0, Math.min(100, Math.round(score * 100)))}% match`;
+}
+
+function renderTextWithCitations(text: string, citations: Citation[]): ReactNode[] {
+  const parts = text.split(/(\[\d+\])/g);
   return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    const match = part.match(/^\[(\d+)\]$/);
+    if (match) {
+      const citationIdx = parseInt(match[1], 10) - 1;
+      const citation = citations[citationIdx];
+      if (citation) {
+        const name = formatCitationName(citation);
+        const score = formatCitationScore(citation.score);
+        return (
+          <span key={`cite-${index}`} className="citation-tooltip-wrapper">
+            <a
+              href={`${apiBase()}/api/documents/${citation.documentId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-citation"
+            >
+              [{citationIdx + 1}]
+            </a>
+            <span className="citation-tooltip">
+              <span className="tooltip-name">{name}</span>
+              <span className="tooltip-score">{score}</span>
+            </span>
+          </span>
+        );
+      }
     }
-    return <span key={index}>{part}</span>;
+    return part;
   });
 }
 
-function renderAssistantContent(content: string): ReactNode {
+function renderInlineMarkdown(text: string, citations: Citation[]): ReactNode[] {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+
+  return parts.flatMap((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return (
+        <strong key={index}>
+          {renderTextWithCitations(part.slice(2, -2), citations)}
+        </strong>
+      );
+    }
+    return renderTextWithCitations(part, citations);
+  });
+}
+
+function renderAssistantContent(content: string, citations: Citation[]): ReactNode {
   const lines = content.split("\n").map((line) => line.trimEnd());
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
@@ -70,7 +118,7 @@ function renderAssistantContent(content: string): ReactNode {
     nodes.push(
       <ul key={`list-${nodes.length}`} className="message-list">
         {listItems.map((item, index) => (
-          <li key={index}>{renderInlineMarkdown(item)}</li>
+          <li key={index}>{renderInlineMarkdown(item, citations)}</li>
         ))}
       </ul>,
     );
@@ -92,7 +140,7 @@ function renderAssistantContent(content: string): ReactNode {
 
     nodes.push(
       <p key={`p-${nodes.length}`} className="message-paragraph">
-        {renderInlineMarkdown(trimmed)}
+        {renderInlineMarkdown(trimmed, citations)}
       </p>,
     );
   });
@@ -323,7 +371,16 @@ export default function App() {
 
       if (!aid) return;
       setMessages((prev) =>
-        prev.map((message) => (message.id === aid ? { ...message, citations } : message)),
+        prev.map((message) => {
+          if (message.id === aid) {
+            const updated = { ...message, citations };
+            if (typeof msg.content === "string") {
+              updated.content = msg.content;
+            }
+            return updated;
+          }
+          return message;
+        }),
       );
       return;
     }
@@ -492,17 +549,7 @@ export default function App() {
     setInput(prompt);
   };
 
-  const formatCitationName = (citation: Citation) => {
-    const candidate =
-      citation.filename?.trim() || citation.sourcePath?.trim() || citation.documentId;
-    const pieces = candidate.split(/[\\/]/);
-    return pieces[pieces.length - 1] || candidate || citation.documentId;
-  };
 
-  const formatCitationScore = (score: number) => {
-    if (!Number.isFinite(score)) return "0%";
-    return `${Math.max(0, Math.min(100, Math.round(score * 100)))}% match`;
-  };
 
   const documentStats = useMemo(() => {
     const publicDocs = documents.filter((doc) => doc.visibility === VISIBILITY_OPTIONS[0]).length;
@@ -755,7 +802,7 @@ export default function App() {
                       </span>
                     </div>
                     <div className="message-content">
-                      {isAssistant ? renderAssistantContent(message.content) : message.content}
+                      {isAssistant ? renderAssistantContent(message.content, citations) : message.content}
                       {message.streaming && (
                         <span className="typing-indicator" aria-label="Streaming response">
                           <span className="typing-dot" />

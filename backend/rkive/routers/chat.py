@@ -323,6 +323,36 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         yield _sse({"type": "error", "message": str(exc)})
         return
 
+    # ── Post-process content and citations ───────────────────────────────────
+    import re
+    # Extract unique cited indices in order of appearance in the response
+    cited_numbers = []
+    for num_str in re.findall(r"\[(\d+)\]", assistant_content):
+        num = int(num_str)
+        if num not in cited_numbers:
+            cited_numbers.append(num)
+
+    filtered_citations = []
+    num_map = {}
+    for i, orig_idx_1 in enumerate(cited_numbers):
+        orig_idx = orig_idx_1 - 1
+        if 0 <= orig_idx < len(citations):
+            filtered_citations.append(citations[orig_idx])
+            num_map[orig_idx_1] = i + 1
+
+    if filtered_citations:
+        def replace_cite(match):
+            old_num = int(match.group(1))
+            new_num = num_map.get(old_num)
+            return f"[{new_num}]" if new_num is not None else match.group(0)
+        
+        assistant_content = re.sub(r"\[(\d+)\]", replace_cite, assistant_content)
+        citations = filtered_citations
+        send_citations = not _is_no_info_response(assistant_content)
+    else:
+        citations = []
+        send_citations = False
+
     await insert_message(conversation_id, "assistant", assistant_content)
     log.info(
         "assistant_message_saved",
@@ -332,7 +362,6 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         },
     )
 
-    send_citations = not _is_no_info_response(assistant_content)
     log.info(
         "sse_chat_completed",
         extra={
@@ -344,6 +373,7 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
     yield _sse(
         {
             "type": "citations",
+            "content": assistant_content,
             "citations": (
                 [
                     {
