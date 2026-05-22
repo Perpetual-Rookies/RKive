@@ -127,8 +127,44 @@ function renderAssistantContent(content: string, citations: Citation[]): ReactNo
 
   lines.forEach((line) => {
     const trimmed = line.trim();
-    const bulletMatch = trimmed.match(/^[-*]\s+(.*)$/);
 
+    // Check for H3
+    const h3Match = trimmed.match(/^###\s+(.*)$/);
+    if (h3Match) {
+      flushList();
+      nodes.push(
+        <h4 key={`h3-${nodes.length}`} className="message-h3">
+          {renderInlineMarkdown(h3Match[1], citations)}
+        </h4>,
+      );
+      return;
+    }
+
+    // Check for H2
+    const h2Match = trimmed.match(/^##\s+(.*)$/);
+    if (h2Match) {
+      flushList();
+      nodes.push(
+        <h3 key={`h2-${nodes.length}`} className="message-h2">
+          {renderInlineMarkdown(h2Match[1], citations)}
+        </h3>,
+      );
+      return;
+    }
+
+    // Check for H1
+    const h1Match = trimmed.match(/^#\s+(.*)$/);
+    if (h1Match) {
+      flushList();
+      nodes.push(
+        <h2 key={`h1-${nodes.length}`} className="message-h1">
+          {renderInlineMarkdown(h1Match[1], citations)}
+        </h2>,
+      );
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.*)$/);
     if (bulletMatch) {
       listItems.push(bulletMatch[1]);
       return;
