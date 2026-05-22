@@ -176,32 +176,138 @@ export default function Files({ onBack }: FilesProps) {
       <aside className="library-sidebar">
         <section className="sidebar-card">
           <div className="section-heading">
-            <span>Library metrics</span>
+            <span className="section-title-group">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="section-title-icon"
+              >
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+              Library metrics
+            </span>
             <span className="helper-chip">{loading ? "Syncing" : "Current"}</span>
           </div>
           <div className="mini-stat-grid">
             <div className="mini-stat">
               <span className="mini-stat-value">{documents.length}</span>
-              <span className="mini-stat-label">total</span>
+              <span className="mini-stat-label">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mini-stat-icon"
+                >
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                  <polyline points="2 17 12 22 22 17"></polyline>
+                  <polyline points="2 12 12 17 22 12"></polyline>
+                </svg>
+                total
+              </span>
             </div>
             <div className="mini-stat">
               <span className="mini-stat-value">{stats.publicDocs}</span>
-              <span className="mini-stat-label">public</span>
+              <span className="mini-stat-label">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mini-stat-icon"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+                public
+              </span>
             </div>
             <div className="mini-stat">
               <span className="mini-stat-value">{stats.privateDocs}</span>
-              <span className="mini-stat-label">private</span>
+              <span className="mini-stat-label">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mini-stat-icon"
+                >
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                private
+              </span>
             </div>
             <div className="mini-stat">
               <span className="mini-stat-value">{stats.pdfs}</span>
-              <span className="mini-stat-label">pdf</span>
+              <span className="mini-stat-label">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mini-stat-icon"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                pdf
+              </span>
             </div>
           </div>
         </section>
 
         <section className="sidebar-card">
           <div className="section-heading">
-            <span>Upload source</span>
+            <span className="section-title-group">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="section-title-icon"
+              >
+                <path d="M21.2 15a8.2 8.2 0 0 0-15.6-3A5.4 5.4 0 0 0 6 22h13a5.3 5.3 0 0 0 2.2-7z"></path>
+                <polyline points="16 16 12 12 8 16"></polyline>
+                <line x1="12" y1="12" x2="12" y2="21"></line>
+              </svg>
+              Upload source
+            </span>
           </div>
           <label className="field-label" htmlFor="library-visibility">
             Visibility
@@ -219,7 +325,23 @@ export default function Files({ onBack }: FilesProps) {
             ))}
           </select>
           <label className="upload-button" htmlFor="library-upload">
-            {uploading ? "Uploading..." : "Choose document"}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="upload-btn-icon"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>{uploading ? "Uploading..." : "Choose document"}</span>
           </label>
           <input
             id="library-upload"
@@ -238,7 +360,23 @@ export default function Files({ onBack }: FilesProps) {
         <header className="library-header">
           <div>
             <p className="eyebrow">Documents</p>
-            <h2>Manage the sources that power RKive.</h2>
+            <h2 className="subheader-title">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="subheader-icon"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              Manage the sources that power RKive.
+            </h2>
           </div>
           <div className="header-panel">
             <div className="header-panel-row">
@@ -279,12 +417,51 @@ export default function Files({ onBack }: FilesProps) {
 
         {loading ? (
           <div className="empty-state">
-            <p className="empty-title">Loading library...</p>
+            <p className="empty-title">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="loading-spinner-icon"
+              >
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              Loading library...
+            </p>
             <p className="empty-copy">Fetching indexed documents and visibility metadata.</p>
           </div>
         ) : filteredDocuments.length === 0 ? (
           <div className="empty-state">
-            <p className="empty-title">No documents match this view.</p>
+            <p className="empty-title">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="empty-state-icon"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              No documents match this view.
+            </p>
             <p className="empty-copy">
               Adjust the filters or upload a new source to expand the knowledge base.
             </p>
@@ -294,9 +471,45 @@ export default function Files({ onBack }: FilesProps) {
             {filteredDocuments.map((doc) => (
               <article key={doc.id} className="document-card">
                 <div className="document-card-top">
-                  <div>
-                    <span className="doc-type-badge">{doc.file_type}</span>
-                    <h3>{doc.filename}</h3>
+                  <div className="document-card-header">
+                    <div className="recent-item-icon">
+                      {doc.file_type === "PDF" ? (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="recent-icon pdf-color"
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="recent-icon md-color"
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                          <line x1="16" y1="13" x2="8" y2="13"></line>
+                          <line x1="16" y1="17" x2="8" y2="17"></line>
+                          <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                      )}
+                    </div>
+                    <div className="document-card-title-group">
+                      <span className="doc-type-badge">{doc.file_type}</span>
+                      <h3>{doc.filename}</h3>
+                    </div>
                   </div>
                   <span className="doc-visibility">{doc.visibility}</span>
                 </div>

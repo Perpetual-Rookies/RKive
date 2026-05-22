@@ -575,6 +575,8 @@ export default function App() {
           busy={busy}
           onNewConversation={startNewConversation}
           onShare={() => void shareConversation()}
+          onRoleChange={setRole}
+          onVisibilityChange={setVisibility}
         />
 
         <main className="chat-main">
@@ -596,22 +598,22 @@ export default function App() {
             {messages.length === 0 && !historyLoading && (
               <div className="welcome-panel">
                 <div className="welcome-hero">
-                  <h3>Ask a question about your indexed knowledge.</h3>
+                  <h3>✨ Ask a question about your indexed knowledge.</h3>
                   <p className="empty-copy">
                     Upload sources and adjust access from the knowledge base when you need them.
                   </p>
                 </div>
                 <div className="welcome-grid">
                   <div className="welcome-card">
-                    <strong>Knowledge base</strong>
+                    <strong>🗄️ Knowledge base</strong>
                     <p>Upload markdown or PDF sources and manage access.</p>
                   </div>
                   <div className="welcome-card">
-                    <strong>Ask</strong>
+                    <strong>💬 Ask</strong>
                     <p>Query the indexed knowledge base.</p>
                   </div>
                   <div className="welcome-card">
-                    <strong>Verify</strong>
+                    <strong>🔍 Verify</strong>
                       <p>Open citations to inspect the original source.</p>
                   </div>
                 </div>
@@ -620,7 +622,7 @@ export default function App() {
 
             {messages.length === 0 && historyLoading && (
               <div className="empty-state">
-                <p className="empty-title">Loading conversation...</p>
+                <p className="empty-title">⏳ Loading conversation...</p>
                 <p className="empty-copy">Restoring recent grounded answers and citations.</p>
               </div>
             )}
@@ -656,7 +658,7 @@ export default function App() {
                     {isAssistant && !message.streaming && citations.length > 0 && (
                       <div className="citation-block">
                         <div className="citation-block-header">
-                          <span>Sources</span>
+                          <span>🔗 Sources</span>
                           <span>{citations.length} attached</span>
                         </div>
                         <div className="citation-row">
