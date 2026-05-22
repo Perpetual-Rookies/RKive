@@ -111,6 +111,13 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
 
     With only 1 prior turn, Turn 3 would only see Turn 2 (IT) and retrieve
     the wrong topic.  With 3 turns, Turn 1 is still in scope.
+
+    Example Output for Turn 3:
+        Current question: what about carry-forward?
+        Most recent — User: [Turn 2 question]
+        Most recent — Assistant: [Turn 2 answer]
+        Earlier (2 turns ago) — User: [Turn 1 question]
+        Earlier (2 turns ago) — Assistant: [Turn 1 answer]
     """
     if not history or not is_context_dependent(question):
         return question
@@ -131,8 +138,10 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
             continue
 
         if role == "assistant" and not pending_assistant:
+            # We found an assistant answer, wait for the corresponding user question
             pending_assistant = _compact(content, _PAIR_COMPACT_LIMIT)
         elif role == "user" and pending_assistant:
+            # Found the pair, add it to our list
             pairs.append((_compact(content, _PAIR_COMPACT_LIMIT), pending_assistant))
             pending_assistant = ""
             if len(pairs) >= _MAX_HISTORY_TURNS:
@@ -140,6 +149,7 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
 
     context_parts = [f"Current question: {question}"]
     for i, (prev_q, prev_a) in enumerate(pairs):
+        # e.g. "Most recent — User: what is the leave policy?"
         label = "Most recent" if i == 0 else f"Earlier ({i + 1} turns ago)"
         context_parts.append(f"{label} — User: {prev_q}")
         context_parts.append(f"{label} — Assistant: {prev_a}")

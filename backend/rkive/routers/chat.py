@@ -84,6 +84,12 @@ def _group_hits_for_context(hits, max_sources: int = 6, max_chunks_per_source: i
 
     The UI expects one citation per document, but the model often needs more
     than one chunk from the same document to answer correctly.
+
+    Example:
+        Input: [DocA_Chunk3, DocA_Chunk1, DocB_Chunk2, DocA_Chunk5]
+        Result: 
+            Source 1 (DocA): [Chunk3, Chunk1]  # Chunk5 dropped (max 2 per source)
+            Source 2 (DocB): [Chunk2]
     """
     grouped: dict[str, dict[str, Any]] = {}
     order: list[str] = []
@@ -97,12 +103,18 @@ def _group_hits_for_context(hits, max_sources: int = 6, max_chunks_per_source: i
             }
             order.append(key)
         else:
+            # Keep the highest-scoring hit as the representative citation for this document
+            # e.g. if Chunk 2 scores 0.8 and Chunk 1 scores 0.6, we cite using Chunk 2's metadata
             if hit.score > grouped[key]["best"].score:
                 grouped[key]["best"] = hit
 
+        # Collect text from multiple chunks in the same document
+        # e.g. Doc A -> [Chunk 1 text, Chunk 2 text]
         if hit.text and len(grouped[key]["chunks"]) < max_chunks_per_source:
             grouped[key]["chunks"].append(hit.text)
 
+        # Stop early if we have enough distinct documents, and each document has enough chunks
+        # e.g. if max_sources=2, we stop when we have 2 docs with 2 chunks each
         if len(order) >= max_sources and all(
             len(grouped[k]["chunks"]) >= max_chunks_per_source for k in order
         ):

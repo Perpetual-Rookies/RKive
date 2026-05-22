@@ -76,12 +76,18 @@ def _sentence_aware_carry(text: str, overlap: int) -> str:
     of a fragment.
 
     Falls back to the raw character slice if no boundary is found.
+
+    Example:
+        text = "Hello. This is a sentence. And another."
+        overlap = 25  # Looks back 25 chars, finds the '.' after "sentence"
+        Returns: "And another."
     """
     if len(text) <= overlap:
         return text.strip()
 
     window = text[-overlap:]
     # Find the last sentence boundary within the window
+    # e.g. for window "...end of sentence. Start of next", boundary is at "."
     boundary = max(
         window.rfind(". "),
         window.rfind(".\n"),
@@ -91,8 +97,10 @@ def _sentence_aware_carry(text: str, overlap: int) -> str:
     )
     if boundary != -1 and boundary < len(window) - 1:
         # Carry starts at the sentence that follows the boundary
+        # e.g. returns "Start of next"
         return window[boundary + 2:].strip()
     # No boundary found — fall back to raw slice from a word boundary
+    # e.g. splits mid-phrase if no punctuation exists
     space = window.rfind(" ")
     if space != -1:
         return window[space + 1:].strip()
@@ -113,6 +121,10 @@ def chunk_markdown(text: str, max_chars: int = 1500, overlap: int = 200) -> list
 
     The main goal is retrieval quality, not perfect markdown preservation.
     Smaller, focused chunks generally retrieve better than one very large block.
+
+    Example:
+        Input: "# Leave\nYou get 20 days.\n\n# IT\nUse a Mac."
+        Returns: ["# Leave\n\nYou get 20 days.", "# IT\n\nUse a Mac."]
     """
     text = text.strip()
     if not text:
@@ -170,6 +182,7 @@ def _chunk_with_heading_context(text: str, max_chars: int, overlap: int) -> list
 
         # Prepend heading to every sub-chunk after the first (first already
         # contains the heading as the section starts with it).
+        # e.g. chunk = "# Parent Heading\n\nThis is paragraph 2"
         for i, chunk in enumerate(section_chunks):
             if i > 0 and heading and not chunk.startswith(heading):
                 chunk = f"{heading}\n\n{chunk}"
