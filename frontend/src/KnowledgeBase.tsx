@@ -1,4 +1,3 @@
-import type { ChangeEvent } from "react";
 import PageBrand from "./PageBrand";
 
 type AppRole = "Standard Employee" | "Sales Representative";
@@ -21,7 +20,6 @@ const VISIBILITY_OPTIONS: Visibility[] = [
 type KnowledgeBaseProps = {
   role: AppRole;
   visibility: Visibility;
-  uploadStatus: string | null;
   documents: DocumentInfo[];
   documentsLoading: boolean;
   documentStats: {
@@ -35,7 +33,6 @@ type KnowledgeBaseProps = {
   onOpenFiles: () => void;
   onRoleChange: (role: AppRole) => void;
   onVisibilityChange: (visibility: Visibility) => void;
-  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
 };
 
 function formatDate(dateStr: string | null): string {
@@ -62,7 +59,6 @@ function roleScope(role: AppRole): string {
 export default function KnowledgeBase({
   role,
   visibility,
-  uploadStatus,
   documents,
   documentsLoading,
   documentStats,
@@ -71,7 +67,6 @@ export default function KnowledgeBase({
   onOpenFiles,
   onRoleChange,
   onVisibilityChange,
-  onUpload,
 }: KnowledgeBaseProps) {
   return (
     <div className="settings-shell">
@@ -120,6 +115,13 @@ export default function KnowledgeBase({
           Sources and access
         </h2>
       </header>
+
+      <div className="settings-intro" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+        <p style={{ margin: 0, color: "var(--muted)" }}>Manage access and sources for RKive. Use the Documents library to upload and manage files — uploads are indexed for fast, grounded answers.</p>
+        <div>
+          <button type="button" className="topbar-cta topbar-cta--primary" onClick={onOpenFiles}>Open Documents</button>
+        </div>
+      </div>
 
       <div className="settings-content">
         <section className="sidebar-card">
@@ -279,43 +281,7 @@ export default function KnowledgeBase({
               );
             })}
           </div>
-          <label className="upload-button" htmlFor="kb-document-upload">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="upload-btn-icon"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <span>Upload knowledge document</span>
-          </label>
-          <input
-            id="kb-document-upload"
-            type="file"
-            accept=".md,.pdf,text/markdown,application/pdf"
-            className="file-input"
-            onChange={onUpload}
-          />
-          {uploadStatus && (
-            <p className={`upload-status ${
-              uploadStatus.includes("successfully") || uploadStatus.includes("Indexed")
-                ? "is-success"
-                : uploadStatus.includes("Uploading") || uploadStatus.includes("indexing")
-                  ? "is-loading"
-                  : "is-error"
-            }`}>
-              {uploadStatus}
-            </p>
-          )}
+          <p className="section-copy">Uploads and full document management live in the Documents library. Click "Documents" to open the library and manage sources.</p>
         </section>
 
         <section className="sidebar-card">

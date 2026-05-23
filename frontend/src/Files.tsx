@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ChangeEvent } from "react";
 import PageBrand from "./PageBrand";
+import ConfirmModal from "./ConfirmModal";
 
 type FileType = "Markdown" | "PDF";
 type Visibility = "Org Level (Public)" | "Sales Project (Private)";
@@ -113,11 +114,17 @@ export default function Files({ onBack }: FilesProps) {
     }
   };
 
-  const onDelete = async (docId: string) => {
-    if (!confirm("Delete this document and its vectors from the knowledge base?")) {
-      return;
-    }
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDoc, setConfirmDoc] = useState<DocumentInfo | null>(null);
 
+  const onDelete = (doc: DocumentInfo) => {
+    setConfirmDoc(doc);
+    setConfirmOpen(true);
+  };
+
+  const performDelete = async () => {
+    if (!confirmDoc) return;
+    const docId = confirmDoc.id;
     setDeleting(docId);
     try {
       const res = await fetch(`${apiBase()}/api/documents/${docId}`, {
@@ -126,7 +133,9 @@ export default function Files({ onBack }: FilesProps) {
       if (!res.ok) {
         throw new Error("Failed to delete document");
       }
-      setDocuments((prev) => prev.filter((doc) => doc.id !== docId));
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      setConfirmOpen(false);
+      setConfirmDoc(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete document");
     } finally {
@@ -665,7 +674,7 @@ export default function Files({ onBack }: FilesProps) {
                   </a>
                   <button
                     className="danger-button"
-                    onClick={() => onDelete(doc.id)}
+                    onClick={() => onDelete(doc)}
                     disabled={deleting === doc.id}
                     type="button"
                   >
@@ -677,7 +686,19 @@ export default function Files({ onBack }: FilesProps) {
           </section>
         )}
       </main>
-    </div>
+      </div>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Delete document?"
+        description={confirmDoc ? `Delete "${confirmDoc.filename}" and its vectors from the knowledge base? This action cannot be undone.` : undefined}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={!!(confirmDoc && deleting === confirmDoc.id)}
+        onCancel={() => { setConfirmOpen(false); setConfirmDoc(null); }}
+        onConfirm={performDelete}
+      />
+
     </div>
   );
 }

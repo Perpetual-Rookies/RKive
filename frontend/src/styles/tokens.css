@@ -1,0 +1,39 @@
+/* Design tokens: spacing, type scale, radii, color tokens (preserve palette) */
+:root {
+  /* Base scale */
+  --base-font-size: 17px;
+  --base-line-height: 1.58;
+
+  /* Spacing */
+  --space-1: 0.5rem;
+  --space-2: 0.75rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Shadows / effects */
+  --shadow-sm: 0 6px 18px rgba(15,23,42,0.06);
+  --shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.08);
+  --glass-blur: blur(16px);
+
+  /* Color tokens (kept from existing stylesheet) */
+  --bg: #f4f7fb;
+  --bg-gradient: radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 30%),
+                 radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.03), transparent 30%),
+                 linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%);
+  --panel: rgba(255, 255, 255, 0.85);
+  --panel-alt: rgba(255, 255, 255, 0.5);
+  --border: rgba(203, 213, 225, 0.8);
+  --border-strong: rgba(148, 163, 184, 0.5);
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --success: #059669;
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+}

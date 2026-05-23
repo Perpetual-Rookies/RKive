@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import Files from "./Files";
 import KnowledgeBase from "./KnowledgeBase";
 import PageBrand from "./PageBrand";
@@ -193,7 +193,6 @@ export default function App() {
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [role, setRole] = useState<AppRole>(ROLE_OPTIONS[0]);
@@ -563,48 +562,6 @@ export default function App() {
     }
   }, [busy, conversationId, handleStreamMessage, input, role, visibility]);
 
-  const onUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    const name = file.name.toLowerCase();
-    if (!name.endsWith(".md") && !name.endsWith(".pdf")) {
-      setUploadStatus("Please choose a .md or .pdf file.");
-      return;
-    }
-
-    setUploadStatus("Uploading and indexing...");
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("visibility", visibility);
-
-    try {
-      const res = await fetch(`${apiBase()}/api/upload`, {
-        method: "POST",
-        body: fd,
-      });
-      const data = (await res.json()) as Record<string, unknown>;
-      if (!res.ok) {
-        const detail =
-          typeof data.error === "string"
-            ? data.error
-            : typeof data.detail === "string"
-              ? data.detail
-              : `HTTP ${res.status}`;
-        setUploadStatus(detail);
-        return;
-      }
-
-      const chunks = typeof data.chunks === "number" ? data.chunks : "?";
-      const deduplicated = data.deduplicated === true ? " Existing file refreshed." : "";
-      setUploadStatus(`Indexed ${chunks} chunks.${deduplicated}`);
-      void loadDocuments();
-    } catch (err) {
-      setUploadStatus(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -653,7 +610,6 @@ export default function App() {
         <KnowledgeBase
           role={role}
           visibility={visibility}
-          uploadStatus={uploadStatus}
           documents={documents}
           documentsLoading={documentsLoading}
           documentStats={documentStats}
@@ -662,7 +618,6 @@ export default function App() {
           onOpenFiles={() => setPage("files")}
           onRoleChange={setRole}
           onVisibilityChange={setVisibility}
-          onUpload={onUpload}
         />
       </div>
     );
@@ -672,6 +627,11 @@ export default function App() {
     <div className="chat-app">
       <header className="page-toolbar">
         <PageBrand />
+        <nav className="top-nav" aria-label="Primary">
+          <button className={`nav-item ${(page as any) === "chat" ? "is-active" : ""}`} onClick={() => setPage("chat")} aria-current={(page as any) === "chat" ? "page" : undefined}>Chat</button>
+          <button className={`nav-item ${(page as any) === "knowledge" ? "is-active" : ""}`} onClick={() => setPage("knowledge")} aria-current={(page as any) === "knowledge" ? "page" : undefined}>Knowledge</button>
+          <button className={`nav-item ${(page as any) === "files" ? "is-active" : ""}`} onClick={() => setPage("files")} aria-current={(page as any) === "files" ? "page" : undefined}>Files</button>
+        </nav>
         <div className="page-toolbar-actions">
           <button
             type="button"
