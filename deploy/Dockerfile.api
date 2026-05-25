@@ -23,7 +23,8 @@ RUN uv pip install --system -r pyproject.toml
 #   - No outbound network calls at runtime (air-gapped friendly).
 #   - The model layer is cached by Docker so rebuilds are fast.
 # HF_HOME controls where Hugging Face caches models inside the image.
-ENV HF_HOME=/app/.hf_cache
+# We place it outside of /app so it doesn't get shadowed by the ./backend:/app volume mount.
+ENV HF_HOME=/hf_cache
 RUN python - <<'EOF'
 from sentence_transformers import CrossEncoder
 print("Downloading BAAI/bge-reranker-base …")
@@ -38,7 +39,7 @@ COPY backend/ ./
 ENV PYTHONUNBUFFERED=1
 ENV PORT=3001
 # Keep HF_HOME consistent at runtime so the cached model is found.
-ENV HF_HOME=/app/.hf_cache
+ENV HF_HOME=/hf_cache
 EXPOSE 3001
 
 CMD ["uvicorn", "rkive.main:app", "--host", "0.0.0.0", "--port", "3001", "--reload"]
