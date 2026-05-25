@@ -112,6 +112,7 @@ function renderAssistantContent(content: string, citations: Citation[]): ReactNo
   const lines = content.split("\n").map((line) => line.trimEnd());
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
+  let tableRows: string[] = [];
 
   const flushList = () => {
     if (listItems.length === 0) return;
@@ -125,63 +126,123 @@ function renderAssistantContent(content: string, citations: Citation[]): ReactNo
     listItems = [];
   };
 
-  lines.forEach((line) => {
+  const flushTable = () => {
+    if (tableRows.length === 0) return;
+    const validRows = tableRows.filter(r => r.trim().startsWith('|') && r.trim().endsWith('|'));
+    if (validRows.length > 0) {
+      const headers = validRows[0].split('|').slice(1, -1).map(s => s.trim());
+      const rows: string[][] = [];
+      for (let i = 1; i < validRows.length; i++) {
+        if (validRows[i].includes('---')) continue;
+        rows.push(validRows[i].split('|').slice(1, -1).map(s => s.trim()));
+      }
+      nodes.push(
+        <div key={`table-wrap-${nodes.length}`} className="message-table-wrapper" style={{ overflowX: 'auto', margin: '1rem 0' }}>
+          <table className="message-table" style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.9em' }}>
+            <thead>
+              <tr>
+                {headers.map((h, idx) => (
+                  <th key={idx} style={{ border: '1px solid var(--border)', padding: '0.6rem', textAlign: 'left', background: 'var(--bg-subtle, #f5f5f5)', fontWeight: '600' }}>
+                    {renderInlineMarkdown(h, citations)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rIdx) => (
+                <tr key={rIdx}>
+                  {row.map((cell, cIdx) => (
+                    <td key={cIdx} style={{ border: '1px solid var(--border)', padding: '0.6rem' }}>
+                      {renderInlineMarkdown(cell, citations)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    tableRows = [];
+  };
+
+  const flushAll = () => {
+    flushList();
+    flushTable();
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
+
+    if (tableRows.length > 0 && trimmed === "") {
+      // Ignore empty lines if we are currently parsing a table (handles LLM formatting quirks)
+      continue;
+    }
+
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      flushList();
+      tableRows.push(trimmed);
+      continue;
+    }
+
+    // If we hit any other content, flush the table if one was building
+    flushTable();
 
     // Check for H3
     const h3Match = trimmed.match(/^###\s+(.*)$/);
     if (h3Match) {
-      flushList();
+      flushAll();
       nodes.push(
         <h4 key={`h3-${nodes.length}`} className="message-h3">
           {renderInlineMarkdown(h3Match[1], citations)}
         </h4>,
       );
-      return;
+      continue;
     }
 
     // Check for H2
     const h2Match = trimmed.match(/^##\s+(.*)$/);
     if (h2Match) {
-      flushList();
+      flushAll();
       nodes.push(
         <h3 key={`h2-${nodes.length}`} className="message-h2">
           {renderInlineMarkdown(h2Match[1], citations)}
         </h3>,
       );
-      return;
+      continue;
     }
 
     // Check for H1
     const h1Match = trimmed.match(/^#\s+(.*)$/);
     if (h1Match) {
-      flushList();
+      flushAll();
       nodes.push(
         <h2 key={`h1-${nodes.length}`} className="message-h1">
           {renderInlineMarkdown(h1Match[1], citations)}
         </h2>,
       );
-      return;
+      continue;
     }
 
     const bulletMatch = trimmed.match(/^[-*]\s+(.*)$/);
     if (bulletMatch) {
       listItems.push(bulletMatch[1]);
-      return;
+      continue;
     }
 
-    flushList();
+    flushAll();
 
-    if (!trimmed) return;
+    if (!trimmed) continue;
 
     nodes.push(
       <p key={`p-${nodes.length}`} className="message-paragraph">
         {renderInlineMarkdown(trimmed, citations)}
       </p>,
     );
-  });
+  }
 
-  flushList();
+  flushAll();
 
   return nodes.length === 0 ? content : nodes;
 }
