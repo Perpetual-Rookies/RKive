@@ -188,10 +188,16 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         yield _sse({"type": "error", "message": str(exc)})
         return
 
-    hits = await search_similar(vector, limit=20, allowed_visibility=allowed_visibility)
+    # Retrieve fewer chunks (10 instead of 20) to strictly bound the CPU reranking time. 
+    # Reranking is O(N) with the number of chunks, so halving this cuts the max inference time in half.
+    hits = await search_similar(vector, limit=10, allowed_visibility=allowed_visibility)
     # Drop obviously irrelevant hits before reranking.
     hits = [h for h in hits if h.score >= _MIN_SCORE_THRESHOLD]
-    hits = rerank_hits(question, hits)
+    
+    # Run the heavy CPU math in a background thread so we don't block the FastAPI async event loop
+    import asyncio
+    hits = await asyncio.to_thread(rerank_hits, question, hits)
+    
     grouped_sources = _group_hits_for_context(hits, max_sources=6, max_chunks_per_source=3)
     cited_hits = [source["best"] for source in grouped_sources]
 

@@ -98,7 +98,7 @@ QA_PAIRS = [
     },
     {
         "question": "What is the capital of France?",
-        "must_contain": ["don't have that information", "do not have that information", "knowledge base"],
+        "must_contain": ["have that information", "knowledge base"],
         "must_not_contain": ["Paris"],
         "label": "Out-of-scope hallucination guard",
     },

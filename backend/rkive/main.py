@@ -26,6 +26,16 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await run_migrations()
+    
+    # Pre-load the reranker model at startup to avoid lazy-loading delays.
+    # We run this synchronously in the main thread because PyTorch can restrict
+    # its CPU thread-pool if initialized inside a background thread.
+    from rkive.services.rerank import _get_cross_encoder
+    model = _get_cross_encoder()
+    
+    # Run a quick dummy inference to "warm up" the PyTorch JIT/graph and thread pools.
+    model.predict([("warmup", "warmup")], show_progress_bar=False)
+    
     logging.getLogger("rkive").info("RKive API ready")
     yield
 

@@ -27,7 +27,7 @@ ENV HF_HOME=/app/.hf_cache
 RUN python - <<'EOF'
 from sentence_transformers import CrossEncoder
 print("Downloading BAAI/bge-reranker-base …")
-CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+CrossEncoder("BAAI/bge-reranker-base", max_length=256)
 print("Model download complete.")
 EOF
 
