@@ -301,6 +301,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .message-row { display: flex; animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .message-row.is-user { justify-content: flex-end; }
 .message-card { display: flex; flex-direction: column; gap: 0.5rem; max-width: min(48rem, 92%); }
+.message-card.is-assistant { max-width: min(64rem, 95%); }
 .message-card.is-user { align-items: flex-end; }
 .message-label { color: var(--text); font-weight: 600; font-size: 0.85rem;}
 .message-subtitle { color: var(--muted); font-size: 0.7rem; }
