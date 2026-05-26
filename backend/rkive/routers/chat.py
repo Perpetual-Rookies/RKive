@@ -420,7 +420,15 @@ async def chat_http(payload: dict[str, Any]):
     """HTTP streaming chat endpoint (SSE)."""
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload")
-    return StreamingResponse(_stream_chat(payload), media_type="text/event-stream")
+    return StreamingResponse(
+        _stream_chat(payload),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/api/conversations/{conversation_id}/messages")
