@@ -105,34 +105,34 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
     The result is still just a search query, not evidence.  Retrieved documents
     remain the only allowed grounding source for the final answer.
 
-    We look back up to *_MAX_HISTORY_TURNS* turn-pairs so that multi-topic
+    We look back up to *_MAX_HISTORY_TURNS* user questions so that multi-topic
     conversations can resolve references correctly.  For example:
 
         Turn 1: User asks about leave policy  → assistant answers
         Turn 2: User asks about IT policy     → assistant answers
         Turn 3: User: "what about carry-forward?"  ← refers to Turn 1
 
-    With only 1 prior turn, Turn 3 would only see Turn 2 (IT) and retrieve
-    the wrong topic.  With 3 turns, Turn 1 is still in scope.
+    IMPORTANT: We intentionally use ONLY the user's prior questions (not the
+    assistant's answers) when building the retrieval query.  Assistant answers
+    are topically broad and diverse — including them injects many unrelated
+    keywords into the retrieval embedding, which causes retrieval drift
+    (a "tell me more" about sales starts retrieving HR policies because
+    the previous assistant turn mentioned both).
 
     Example Output for Turn 3:
         Current question: what about carry-forward?
-        Most recent — User: [Turn 2 question]
-        Most recent — Assistant: [Turn 2 answer]
-        Earlier (2 turns ago) — User: [Turn 1 question]
-        Earlier (2 turns ago) — Assistant: [Turn 1 answer]
+        Most recent — User: [Turn 2 user question]
+        Earlier (2 turns ago) — User: [Turn 1 user question]
     """
     if not history or not is_context_dependent(question):
         return question
 
-    # Collect up to 3 most-recent (user, assistant) pairs from history.
-    # Pairs are stored in reverse-chronological order so the most recent
-    # pair appears first in the retrieval query.
+    # Collect up to _MAX_HISTORY_TURNS most-recent user questions from history.
+    # User questions are short and topically precise — ideal for retrieval.
     _MAX_HISTORY_TURNS = 3
-    _PAIR_COMPACT_LIMIT = 120  # chars per message in the query (keep query short)
+    _USER_COMPACT_LIMIT = 150  # chars per user message (user questions are short anyway)
 
-    pairs: list[tuple[str, str]] = []
-    pending_assistant = ""
+    prior_user_questions: list[str] = []
 
     for message in reversed(history):
         role = str(message.get("role", "")).lower()
@@ -140,30 +140,23 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
         if not content:
             continue
 
-        if role == "assistant" and not pending_assistant:
-            # We found an assistant answer, wait for the corresponding user question
-            pending_assistant = _compact(content, _PAIR_COMPACT_LIMIT)
-        elif role == "user" and pending_assistant:
-            # Found the pair, add it to our list
-            pairs.append((_compact(content, _PAIR_COMPACT_LIMIT), pending_assistant))
-            pending_assistant = ""
-            if len(pairs) >= _MAX_HISTORY_TURNS:
+        if role == "user":
+            prior_user_questions.append(_compact(content, _USER_COMPACT_LIMIT))
+            if len(prior_user_questions) >= _MAX_HISTORY_TURNS:
                 break
 
     context_parts = [f"Current question: {question}"]
-    for i, (prev_q, prev_a) in enumerate(pairs):
-        # e.g. "Most recent — User: what is the leave policy?"
+    for i, prev_q in enumerate(prior_user_questions):
         label = "Most recent" if i == 0 else f"Earlier ({i + 1} turns ago)"
         context_parts.append(f"{label} — User: {prev_q}")
-        context_parts.append(f"{label} — Assistant: {prev_a}")
 
     expanded_query = "\n".join(context_parts)
     log.info(
-        "query_expanded_from_history", 
+        "query_expanded_from_history",
         extra={
-            "original_question": question, 
-            "expanded_length": len(expanded_query), 
-            "turns_used": len(pairs)
+            "original_question": question,
+            "expanded_length": len(expanded_query),
+            "turns_used": len(prior_user_questions),
         }
     )
     return expanded_query

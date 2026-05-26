@@ -285,7 +285,12 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         "'For personal HR information, please log in to the MyRSystems portal and navigate to the MyHR section.' "
         "General policy questions (e.g. 'how many leave days do employees get?') should be answered from the Context.\n"
         "5. Match response length to the question: detailed policy questions deserve comprehensive answers "
-        "with bullet points or numbered lists; simple lookups should be concise. Always be professional.\n\n"
+        "with bullet points or numbered lists; simple lookups should be concise. Always be professional.\n"
+        "6. STAY ON TOPIC: When the user asks a vague follow-up (e.g. 'tell me more', 'tell me again', "
+        "'what else'), look at the Conversation History to determine what topic was being discussed, "
+        "and provide more depth on THAT topic only. Do NOT switch to or summarize unrelated topics. "
+        "If the context retrieved is about the same topic, expand on it. "
+        "If you cannot elaborate further on the topic, say so directly.\n\n"
         f"Context:\n{context or '(No relevant documents found.)'}"
     )
 
