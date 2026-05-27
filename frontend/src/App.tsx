@@ -61,114 +61,171 @@ function formatCitationScore(score: number): string {
   return `${Math.max(0, Math.min(100, Math.round(score * 100)))}% match`;
 }
 
-function renderTextWithCitations(text: string, citations: Citation[]): ReactNode[] {
-  const parts = text.split(/(\[\d+\])/g);
-  const result: ReactNode[] = [];
+type ASTNode =
+  | { type: "text"; val: string }
+  | { type: "bold"; children: ASTNode[] }
+  | { type: "italic"; children: ASTNode[] }
+  | { type: "code"; val: string }
+  | { type: "citation"; index: number }
+  | { type: "br" };
 
-  for (let index = 0; index < parts.length; index++) {
-    const part = parts[index];
-    const match = part.match(/^\[(\d+)\]$/);
-    if (match) {
-      const citationIdx = parseInt(match[1], 10) - 1;
-      const citation = citations[citationIdx];
-      if (citation) {
-        const name = formatCitationName(citation);
-        const score = formatCitationScore(citation.score);
-        result.push(
-          <span key={`cite-${index}`} className="citation-tooltip-wrapper">
-            <a
-              href={`${apiBase()}/api/documents/${citation.documentId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-citation"
-            >
-              [{citationIdx + 1}]
-            </a>
-            <span className="citation-tooltip">
-              <span className="tooltip-name">{name}</span>
-              <span className="tooltip-score">{score}</span>
-            </span>
-          </span>
-        );
+function findMatchingClosingDelimiter(text: string, startIdx: number, delimiter: string): number {
+  if (delimiter === "**") {
+    return text.indexOf("**", startIdx + 2);
+  }
+  
+  if (delimiter === "*") {
+    let idx = startIdx + 1;
+    while (idx < text.length) {
+      if (text.startsWith("**", idx)) {
+        idx += 2;
+      } else if (text[idx] === "*") {
+        return idx;
+      } else {
+        idx++;
+      }
+    }
+    return -1;
+  }
+  
+  if (delimiter === "_") {
+    let idx = startIdx + 1;
+    while (idx < text.length) {
+      if (text.startsWith("__", idx)) {
+        idx += 2;
+      } else if (text[idx] === "_") {
+        return idx;
+      } else {
+        idx++;
+      }
+    }
+    return -1;
+  }
+  
+  return -1;
+}
+
+function parseToAST(text: string): ASTNode[] {
+  const nodes: ASTNode[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    const brMatch = text.slice(i).match(/^<br\s*\/?>/i);
+    if (brMatch) {
+      nodes.push({ type: "br" });
+      i += brMatch[0].length;
+      continue;
+    }
+
+    const citeMatch = text.slice(i).match(/^\[(\d+)\]/);
+    if (citeMatch) {
+      nodes.push({ type: "citation", index: parseInt(citeMatch[1], 10) - 1 });
+      i += citeMatch[0].length;
+      continue;
+    }
+
+    if (text[i] === "`") {
+      const closingIdx = text.indexOf("`", i + 1);
+      if (closingIdx !== -1) {
+        nodes.push({ type: "code", val: text.slice(i + 1, closingIdx) });
+        i = closingIdx + 1;
         continue;
       }
     }
 
-    const brParts = part.split(/(<br\s*\/?>)/gi);
-    for (let subIndex = 0; subIndex < brParts.length; subIndex++) {
-      const subPart = brParts[subIndex];
-      if (/^<br\s*\/?>$/i.test(subPart)) {
-        result.push(<br key={`br-${index}-${subIndex}`} />);
-      } else if (subPart) {
-        result.push(subPart);
+    if (text.startsWith("**", i)) {
+      const closingIdx = findMatchingClosingDelimiter(text, i, "**");
+      if (closingIdx !== -1) {
+        const content = text.slice(i + 2, closingIdx);
+        nodes.push({ type: "bold", children: parseToAST(content) });
+        i = closingIdx + 2;
+        continue;
       }
     }
-  }
 
-  return result;
-}
+    if (text[i] === "*") {
+      const closingIdx = findMatchingClosingDelimiter(text, i, "*");
+      if (closingIdx !== -1) {
+        const content = text.slice(i + 1, closingIdx);
+        nodes.push({ type: "italic", children: parseToAST(content) });
+        i = closingIdx + 1;
+        continue;
+      }
+    }
 
-function renderItalics(text: string, citations: Citation[]): ReactNode[] {
-  const parts = text.split(/(\*[^*]+?\*|_[^_]+?_)/g);
-  const result: ReactNode[] = [];
+    if (text[i] === "_") {
+      const closingIdx = findMatchingClosingDelimiter(text, i, "_");
+      if (closingIdx !== -1) {
+        const content = text.slice(i + 1, closingIdx);
+        nodes.push({ type: "italic", children: parseToAST(content) });
+        i = closingIdx + 1;
+        continue;
+      }
+    }
 
-  for (let index = 0; index < parts.length; index++) {
-    const part = parts[index];
-    if (
-      (part.startsWith("*") && part.endsWith("*") && part.length > 2) ||
-      (part.startsWith("_") && part.endsWith("_") && part.length > 2)
+    let nextSpecial = i + 1;
+    while (
+      nextSpecial < text.length &&
+      text[nextSpecial] !== "`" &&
+      text[nextSpecial] !== "*" &&
+      text[nextSpecial] !== "_" &&
+      text[nextSpecial] !== "[" &&
+      text[nextSpecial] !== "<"
     ) {
-      result.push(
-        <em key={`italic-${index}`}>
-          {renderTextWithCitations(part.slice(1, -1), citations)}
-        </em>
-      );
-    } else if (part) {
-      result.push(...renderTextWithCitations(part, citations));
+      nextSpecial++;
     }
+    nodes.push({ type: "text", val: text.slice(i, nextSpecial) });
+    i = nextSpecial;
   }
 
-  return result;
+  return nodes;
 }
 
-function renderInlineCodeAndCitations(text: string, citations: Citation[]): ReactNode[] {
-  const codeParts = text.split(/(`[^`]+`)/g);
-  const result: ReactNode[] = [];
-
-  for (let index = 0; index < codeParts.length; index++) {
-    const codePart = codeParts[index];
-    if (codePart.startsWith("`") && codePart.endsWith("`")) {
-      result.push(
-        <code key={`code-${index}`} className="inline-code">
-          {codePart.slice(1, -1)}
-        </code>
-      );
-    } else if (codePart) {
-      result.push(...renderItalics(codePart, citations));
+function compileAST(nodes: ASTNode[], citations: Citation[]): ReactNode[] {
+  return nodes.map((node, idx) => {
+    switch (node.type) {
+      case "text":
+        return node.val;
+      case "bold":
+        return <strong key={`bold-${idx}`}>{compileAST(node.children, citations)}</strong>;
+      case "italic":
+        return <em key={`italic-${idx}`}>{compileAST(node.children, citations)}</em>;
+      case "code":
+        return <code key={`code-${idx}`} className="inline-code">{node.val}</code>;
+      case "br":
+        return <br key={`br-${idx}`} />;
+      case "citation": {
+        const citationIdx = node.index;
+        const citation = citations[citationIdx];
+        if (citation) {
+          const name = formatCitationName(citation);
+          const score = formatCitationScore(citation.score);
+          return (
+            <span key={`cite-${idx}`} className="citation-tooltip-wrapper">
+              <a
+                href={`${apiBase()}/api/documents/${citation.documentId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-citation"
+              >
+                [{citationIdx + 1}]
+              </a>
+              <span className="citation-tooltip">
+                <span className="tooltip-name">{name}</span>
+                <span className="tooltip-score">{score}</span>
+              </span>
+            </span>
+          );
+        }
+        return `[${citationIdx + 1}]`;
+      }
     }
-  }
-
-  return result;
+  });
 }
 
 function renderInlineMarkdown(text: string, citations: Citation[]): ReactNode[] {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  const result: ReactNode[] = [];
-
-  for (let index = 0; index < parts.length; index++) {
-    const part = parts[index];
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      result.push(
-        <strong key={`bold-${index}`}>
-          {renderInlineCodeAndCitations(part.slice(2, -2), citations)}
-        </strong>
-      );
-    } else if (part) {
-      result.push(...renderInlineCodeAndCitations(part, citations));
-    }
-  }
-
-  return result;
+  const ast = parseToAST(text);
+  return compileAST(ast, citations);
 }
 
 /**
