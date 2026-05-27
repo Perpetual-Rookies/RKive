@@ -97,7 +97,7 @@ def rerank_hits(question: str, hits: list[SearchHit], limit: int = 12) -> list[S
 
         # scores is a numpy array of float32 logits; higher = more relevant.
         # Disable progress bar to reduce log noise.
-        scores = model.predict(pairs, show_progress_bar=True)
+        scores = model.predict(pairs, show_progress_bar=False)
 
         ranked = sorted(
             zip(scores, hits),

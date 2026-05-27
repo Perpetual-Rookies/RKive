@@ -63,7 +63,10 @@ function formatCitationScore(score: number): string {
 
 function renderTextWithCitations(text: string, citations: Citation[]): ReactNode[] {
   const parts = text.split(/(\[\d+\])/g);
-  return parts.map((part, index) => {
+  const result: ReactNode[] = [];
+
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
     const match = part.match(/^\[(\d+)\]$/);
     if (match) {
       const citationIdx = parseInt(match[1], 10) - 1;
@@ -71,7 +74,7 @@ function renderTextWithCitations(text: string, citations: Citation[]): ReactNode
       if (citation) {
         const name = formatCitationName(citation);
         const score = formatCitationScore(citation.score);
-        return (
+        result.push(
           <span key={`cite-${index}`} className="citation-tooltip-wrapper">
             <a
               href={`${apiBase()}/api/documents/${citation.documentId}`}
@@ -87,32 +90,144 @@ function renderTextWithCitations(text: string, citations: Citation[]): ReactNode
             </span>
           </span>
         );
+        continue;
       }
     }
-    return part;
-  });
+
+    const brParts = part.split(/(<br\s*\/?>)/gi);
+    for (let subIndex = 0; subIndex < brParts.length; subIndex++) {
+      const subPart = brParts[subIndex];
+      if (/^<br\s*\/?>$/i.test(subPart)) {
+        result.push(<br key={`br-${index}-${subIndex}`} />);
+      } else if (subPart) {
+        result.push(subPart);
+      }
+    }
+  }
+
+  return result;
+}
+
+function renderItalics(text: string, citations: Citation[]): ReactNode[] {
+  const parts = text.split(/(\*[^*]+?\*|_[^_]+?_)/g);
+  const result: ReactNode[] = [];
+
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    if (
+      (part.startsWith("*") && part.endsWith("*") && part.length > 2) ||
+      (part.startsWith("_") && part.endsWith("_") && part.length > 2)
+    ) {
+      result.push(
+        <em key={`italic-${index}`}>
+          {renderTextWithCitations(part.slice(1, -1), citations)}
+        </em>
+      );
+    } else if (part) {
+      result.push(...renderTextWithCitations(part, citations));
+    }
+  }
+
+  return result;
+}
+
+function renderInlineCodeAndCitations(text: string, citations: Citation[]): ReactNode[] {
+  const codeParts = text.split(/(`[^`]+`)/g);
+  const result: ReactNode[] = [];
+
+  for (let index = 0; index < codeParts.length; index++) {
+    const codePart = codeParts[index];
+    if (codePart.startsWith("`") && codePart.endsWith("`")) {
+      result.push(
+        <code key={`code-${index}`} className="inline-code">
+          {codePart.slice(1, -1)}
+        </code>
+      );
+    } else if (codePart) {
+      result.push(...renderItalics(codePart, citations));
+    }
+  }
+
+  return result;
 }
 
 function renderInlineMarkdown(text: string, citations: Citation[]): ReactNode[] {
   const parts = text.split(/(\*\*.*?\*\*)/g);
+  const result: ReactNode[] = [];
 
-  return parts.flatMap((part, index) => {
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return (
-        <strong key={index}>
-          {renderTextWithCitations(part.slice(2, -2), citations)}
+      result.push(
+        <strong key={`bold-${index}`}>
+          {renderInlineCodeAndCitations(part.slice(2, -2), citations)}
         </strong>
       );
+    } else if (part) {
+      result.push(...renderInlineCodeAndCitations(part, citations));
     }
-    return renderTextWithCitations(part, citations);
-  });
+  }
+
+  return result;
+}
+
+/**
+ * Convert LaTeX math tokens the LLM sometimes emits into readable Unicode.
+ * Handles both inline math ($\cmd$) and bare \cmd forms.
+ * Applied once before any rendering so all paths benefit.
+ */
+const LATEX_MAP: [RegExp, string][] = [
+  // Arrows
+  [/\$\\rightarrow\$/g,  "→"],
+  [/\$\\leftarrow\$/g,   "←"],
+  [/\$\\Rightarrow\$/g,  "⇒"],
+  [/\$\\Leftarrow\$/g,   "⇐"],
+  [/\$\\implies\$/g,     "⟹"],
+  [/\$\\iff\$/g,         "⟺"],
+  [/\$\\to\$/g,          "→"],
+  [/\$\\gets\$/g,        "←"],
+  // Relations
+  [/\$\\leq\$/g,         "≤"],
+  [/\$\\geq\$/g,         "≥"],
+  [/\$\\neq\$/g,         "≠"],
+  [/\$\\approx\$/g,      "≈"],
+  [/\$\\times\$/g,       "×"],
+  [/\$\\div\$/g,         "÷"],
+  [/\$\\pm\$/g,          "±"],
+  // Logic
+  [/\$\\land\$/g,        "∧"],
+  [/\$\\lor\$/g,         "∨"],
+  [/\$\\neg\$/g,         "¬"],
+  [/\$\\forall\$/g,      "∀"],
+  [/\$\\exists\$/g,      "∃"],
+  // Misc
+  [/\$\\cdot\$/g,        "·"],
+  [/\$\\ldots\$/g,       "…"],
+  [/\$\\infty\$/g,       "∞"],
+  [/\$\\alpha\$/g,       "α"],
+  [/\$\\beta\$/g,        "β"],
+  [/\$\\gamma\$/g,       "γ"],
+  [/\$\\delta\$/g,       "δ"],
+  // Strip any remaining $...$ inline math wrappers (show content as-is)
+  [/\$([^$\n]{1,80})\$/g, "$1"],
+];
+
+function sanitizeLLMText(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of LATEX_MAP) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
 }
 
 function renderAssistantContent(content: string, citations: Citation[]): ReactNode {
-  const lines = content.split("\n").map((line) => line.trimEnd());
+  const lines = sanitizeLLMText(content).split("\n");
+
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
   let tableRows: string[] = [];
+  let inCodeBlock = false;
+  let codeBlockLines: string[] = [];
 
   const flushList = () => {
     if (listItems.length === 0) return;
@@ -166,13 +281,41 @@ function renderAssistantContent(content: string, citations: Citation[]): ReactNo
     tableRows = [];
   };
 
+  const flushCodeBlock = () => {
+    if (codeBlockLines.length === 0) return;
+    nodes.push(
+      <pre key={`code-block-${nodes.length}`} className="message-code-block">
+        <code>{codeBlockLines.join("\n")}</code>
+      </pre>
+    );
+    codeBlockLines = [];
+  };
+
   const flushAll = () => {
     flushList();
     flushTable();
+    flushCodeBlock();
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    if (inCodeBlock) {
+      if (line.trim().startsWith("```")) {
+        flushCodeBlock();
+        inCodeBlock = false;
+      } else {
+        codeBlockLines.push(line);
+      }
+      continue;
+    }
+
+    if (line.trim().startsWith("```")) {
+      flushAll();
+      inCodeBlock = true;
+      continue;
+    }
+
     const trimmed = line.trim();
 
     if (tableRows.length > 0 && trimmed === "") {

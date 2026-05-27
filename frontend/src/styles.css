@@ -19,6 +19,15 @@ body {
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+code.inline-code {
+  background: var(--panel-alt);
+  border: 1px solid var(--border-strong);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  font-size: 0.88em;
+  color: var(--text);
+  word-break: break-word;
+}
 
 #root { height: 100dvh; }
 

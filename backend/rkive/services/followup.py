@@ -23,6 +23,12 @@ log = logging.getLogger("rkive.followup")
 _EXPLICIT_FOLLOWUP_PATTERNS = [
     r"^tell me more\b",
     r"^tell me again\b",
+    r"^do (it )?again\b",
+    r"^redo\b",
+    r"^again\b",
+    r"^repeat\b",
+    r"^show (me )?(it |that |this )?again\b",
+    r"^one more time\b",
     r"^what about\b",
     r"^how about\b",
     r"^what else\b",
