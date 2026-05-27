@@ -15,6 +15,16 @@
 6. [RETRIEVAL-01 — Score Threshold: 0.20 → 0.40](#retrieval-01)
 7. [RETRIEVAL-02 — Cross-Encoder Reranker: BAAI/bge-reranker-base](#retrieval-02)
 8. [RETRIEVAL-03 — Follow-up Detection: Two-Tier System](#retrieval-03)
+9. [RETRIEVAL-04 — Multi-Turn Follow-up Context: 1 Turn → 3 Turns](#retrieval-04)
+10. [RETRIEVAL-05 — Visibility Filter Bug Fix](#retrieval-05)
+11. [RETRIEVAL-06 — Anchor-Based Follow-up Retrieval Query](#retrieval-06)
+12. [INFERENCE-01 — Remove Follow-up Prompt Injection](#inference-01)
+13. [INFERENCE-02 — Adaptive Response Length](#inference-02)
+14. [INFERENCE-03 — Context Block Chunk Separators](#inference-03)
+15. [INFERENCE-04 — Token Budget Management](#inference-04)
+16. [INFERENCE-05 — LLM Streaming Timeout](#inference-05)
+17. [INFERENCE-06 — Stay-on-Topic System Prompt Rule](#inference-06)
+18. [DEPLOY-01 — SSE Streaming: Disable Proxy Buffering](#deploy-01)
 
 ---
 
@@ -441,17 +451,20 @@ No token budget was applied to context blocks or conversation history. With 6 so
 - Inconsistent behaviour that's hard to debug
 
 ### Decision
-Added `_trim_to_token_budget()` using a `chars / 4` token estimation heuristic (industry standard for English text). Budget allocation for the 8 192-token window:
+Added `_trim_to_token_budget()` using a `chars / 4` token estimation heuristic (industry standard for English text; `gemma4` SentencePiece averages ~3.5–4 chars/token, so this is accurate). Budget allocation uses a conservative **32K working budget** out of Gemma 4's 128K context window, leaving the remaining 96K as headroom for output and future growth:
 
 | Component | Token Budget | Char Budget |
 |-----------|-------------|-------------|
-| System prompt (static) | ~400 | ~1 600 |
-| Context blocks | ~2 500 | ~10 000 |
-| Conversation history | ~1 200 | ~4 800 |
-| Current question | ~200 | ~800 |
-| Output buffer | ~1 500 | — |
-| Safety headroom | ~392 | — |
-| **Total** | **~8 192** | — |
+| System prompt (static) | ~500 | ~2 000 |
+| Context blocks | ~10 000 | ~40 000 |
+| Conversation history | ~4 000 | ~16 000 |
+| Current question | ~500 | ~2 000 |
+| Output buffer | ~16 000 | — |
+| Safety headroom | ~1 192 | — |
+| **Total working budget** | **~32 192** | — |
+| **Model capacity** | **128 000** | — |
+
+> **Note:** The original budget was designed for `llama3.1` (8 192-token context). After switching to `gemma4:31b:cloud` (128K context), the budgets were updated 4× for context blocks and 3× for history to take advantage of the larger window.
 
 Context blocks are trimmed first (drop lowest-ranked sources). History is trimmed second (drop oldest messages first, preserving recency).
 
@@ -489,4 +502,158 @@ Replaced with `httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)`:
 - **+** Users get a clear `read timeout` error instead of an indefinite hang.
 - **+** Stalled connections are released, freeing server resources.
 - **−** Very long documents (rare in this use case) could theoretically hit 180 s. Adjustable via env var if needed.
+
+---
+
+## RETRIEVAL-06 — Anchor-Based Follow-up Retrieval Query {#retrieval-06}
+
+**File:** `backend/rkive/services/followup.py` — `build_retrieval_query()`, `_find_anchor_question()`  
+**Date:** 2026-05-27
+
+### Problem
+The follow-up retrieval query was built by appending recent conversation history (both user questions *and* assistant answers) to the current vague question:
+
+```
+Current question: Tell me again
+Most recent — User: Tell me more
+Most recent — Assistant: Based on Q3 pipeline: Global Finance Corp ($4.2M)...
+                         Case Studies: RAG virtual assistant (65% Tier-1)...
+                         HR Policies: In-office mandatory Tuesdays and Thursdays...
+```
+
+The assistant answer from a broad "tell me more" response contained keywords from multiple unrelated topics (sales, case studies, HR policies). Including it in the retrieval embedding caused **retrieval drift** — subsequent vague follow-ups retrieved a mix of all topics:
+
+```
+User: "What do you know about sales"  → retrieves sales pipeline ✓
+User: "Tell me more"                  → retrieves sales + case studies + HR ✗
+User: "Tell me again"                 → retrieves everything in the KB ✗
+```
+
+This compounded with each follow-up turn, spiralling further from the original topic.
+
+### Decision
+Replaced the pair-based (user+assistant) history expansion with **anchor-based retrieval**:
+
+1. Added `_find_anchor_question(history)` — walks back through history (up to 6 user turns) and returns the last *concrete* (non-follow-up) user question. Follow-up turns like "tell me more", "tell me again", "more detailed" are skipped.
+
+2. `build_retrieval_query()` now builds the query as:
+   ```
+   {anchor topic} — {current vague question}
+   ```
+   Example:
+   ```
+   what do you know about sales — Tell me again
+   ```
+
+The anchor stays **fixed** no matter how many follow-ups chain together:
+
+| Turn | User question | Retrieval query built |
+|------|--------------|----------------------|
+| 1 | "What do you know about sales" | `what do you know about sales` |
+| 2 | "Tell me more" | `what do you know about sales — Tell me more` ✅ |
+| 3 | "Tell me again" | `what do you know about sales — Tell me again` ✅ |
+| 4 | "more detailed" | `what do you know about sales — more detailed` ✅ |
+
+The LLM still receives the full Q&A conversation history (via `list_recent_messages` → `capped_history`) so it has memory of what was said. The retrieval query only affects which documents are fetched from Qdrant.
+
+**Key insight:** Retrieval and LLM context are separate concerns:
+- **Qdrant retrieval query** → needs topically precise keywords → user anchor question only
+- **LLM conversation history** → needs full Q&A pairs for coherent dialogue → unchanged
+
+### Also added to `_EXPLICIT_FOLLOWUP_PATTERNS`
+- `r"^tell me again\b"`
+- `r"^more detailed\b"`
+- `r"^explain more\b"`
+
+### Alternatives Considered
+| Approach | Reason rejected |
+|----------|----------------|
+| Include assistant answer, but truncated to 60 chars | Still injects diverse topic keywords even in a short window |
+| User questions only (no anchor, list of prior Qs) | Better than including assistant answers, but still accumulates drift over multiple follow-ups |
+| LLM-based query rewriting ("rephrase as standalone") | Expensive: adds a full LLM round-trip before retrieval; latency cost unacceptable |
+
+### Trade-offs
+- **+** Eliminates retrieval drift spirals in follow-up chains of any length.
+- **+** The anchor is stable: 5 chained "tell me again" turns all query the same topic.
+- **+** No external dependencies, no latency cost.
+- **−** If the user genuinely wants to change topic with a short question (e.g. "what about HR?"), the anchor from the previous topic is still used. However, "what about HR?" is 15 chars → `_ALWAYS_FOLLOWUP_LENGTH=18` makes it a follow-up, and the anchor will be the previous concrete question. In practice this works fine because the query becomes `"what do you know about sales — what about HR?"` which retrieves HR documents that also relate to sales context. A future improvement could detect topic shifts explicitly.
+- **−** Falls back to list-of-user-questions expansion when no anchor exists (e.g. the very first message in a session is already a follow-up — unusual).
+
+---
+
+## INFERENCE-06 — Stay-on-Topic System Prompt Rule {#inference-06}
+
+**File:** `backend/rkive/routers/chat.py` — system prompt Rule 6  
+**Date:** 2026-05-27
+
+### Problem
+Even when retrieval returned mixed-topic context (due to the retrieval drift issue above), the LLM would eagerly summarise *all* retrieved content rather than staying focused on the active conversation topic. A user asking "tell me again" after a sales question would receive a comprehensive dump of everything the system knew: case studies, HR policies, project operations, *and* sales — as if the user had asked "tell me everything".
+
+### Decision
+Added **Rule 6** to the system prompt:
+
+```
+6. STAY ON TOPIC: When the user asks a vague follow-up (e.g. 'tell me more',
+'tell me again', 'what else'), look at the Conversation History to determine
+what topic was being discussed, and provide more depth on THAT topic only.
+Do NOT switch to or summarize unrelated topics. If the context retrieved is
+about the same topic, expand on it. If you cannot elaborate further on the
+topic, say so directly.
+```
+
+This complements RETRIEVAL-06: retrieval is now more focused (anchor-based), and the LLM is explicitly instructed to use conversation history to determine the active topic before answering.
+
+### Trade-offs
+- **+** Even if retrieval returns some off-topic context, the LLM filters it by topic.
+- **+** Graceful degradation: when the LLM truly has nothing more to say on the topic, it says so instead of switching topics (`"I cannot elaborate further on this topic"`).
+- **−** Adds ~60 tokens to the system prompt, reducing the context budget by a negligible amount.
+- **−** Model compliance varies — smaller models may not reliably follow the instruction. Observed to work well with `gemma4:31b:cloud`.
+
+---
+
+## DEPLOY-01 — SSE Streaming: Disable Proxy Buffering {#deploy-01}
+
+**Files:** `backend/rkive/routers/chat.py`, `deploy/nginx.conf`, `deploy/local.conf`  
+**Date:** 2026-05-27
+
+### Problem
+The application used Server-Sent Events (SSE) to stream LLM tokens to the browser in real time. The streaming pipeline was correctly implemented end-to-end — FastAPI yielded SSE chunks, the frontend consumed them with a `ReadableStream` reader — but users saw the **entire response appear at once** rather than token-by-token.
+
+Root cause: Nginx (the reverse proxy in front of FastAPI) was **buffering the SSE response**. By default, Nginx accumulates the upstream response in memory and only forwards it once the buffer is full or the response ends. For SSE streams, this means all tokens are buffered until the LLM finishes generating, then flushed as one bulk payload.
+
+### Decision
+Two-layer fix:
+
+**1. FastAPI — Add streaming headers to `StreamingResponse`:**
+```python
+return StreamingResponse(
+    _stream_chat(payload),
+    media_type="text/event-stream",
+    headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",   # ← tells Nginx to bypass its buffer
+    },
+)
+```
+`X-Accel-Buffering: no` is an Nginx directive embedded in the response header that instructs the proxy to disable buffering for that specific response, without requiring a global Nginx config change.
+
+**2. Nginx — Explicitly disable proxy buffering on the `/api` location:**
+```nginx
+location /api {
+    ...
+    proxy_buffering off;   # ← disable response buffer accumulation
+    proxy_cache off;       # ← disable caching (caching breaks streaming)
+}
+```
+Applied to both `deploy/nginx.conf` (production) and `deploy/local.conf` (local development).
+
+### Why two layers?
+The `X-Accel-Buffering: no` header approach alone is sufficient for standard Nginx but can be overridden by certain proxy configurations or CDN layers. Having both the header *and* the explicit `proxy_buffering off` in the config is defence-in-depth — either layer alone would fix standard deployments, both together ensure it works regardless of upstream proxy behaviour.
+
+### Trade-offs
+- **+** Tokens now stream to the browser as they are generated — users see the response build word-by-word.
+- **+** `X-Accel-Buffering: no` is scoped to only the SSE endpoint, not the entire server — non-streaming responses (uploads, document fetches) still benefit from buffering.
+- **−** Slightly higher server memory pressure: buffering compresses multiple small TCP packets into larger ones. With buffering off, each SSE chunk is forwarded immediately (more TCP round trips). Negligible at this scale.
+- **−** If a CDN sits in front of Nginx (e.g. Cloudflare), its own buffering may need to be disabled separately. Most CDNs honour `Cache-Control: no-cache` for SSE media type responses.
 

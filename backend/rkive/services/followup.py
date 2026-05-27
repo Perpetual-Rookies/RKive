@@ -22,6 +22,7 @@ log = logging.getLogger("rkive.followup")
 # regardless of question length.  Low false-positive risk.
 _EXPLICIT_FOLLOWUP_PATTERNS = [
     r"^tell me more\b",
+    r"^tell me again\b",
     r"^what about\b",
     r"^how about\b",
     r"^what else\b",
@@ -32,6 +33,8 @@ _EXPLICIT_FOLLOWUP_PATTERNS = [
     r"^go on\b",
     r"^continue\b",
     r"^give me more\b",
+    r"^more detailed\b",
+    r"^explain more\b",
 ]
 
 # ── Tier 2: Pronoun-based follow-up signals ───────────────────────────────────
@@ -99,47 +102,92 @@ def is_context_dependent(question: str) -> bool:
     return False
 
 
+def _find_anchor_question(history: list[dict[str, str]]) -> str | None:
+    """Walk back through history and find the last self-contained user question.
+
+    The 'anchor' is the most recent user turn that was NOT itself a follow-up
+    (i.e. it had a concrete topic like 'what do you know about sales').
+    Follow-up turns like 'tell me more', 'tell me again' are skipped.
+
+    We look back up to 6 user turns to handle long chains of follow-ups.
+    """
+    user_turns_scanned = 0
+    for message in reversed(history):
+        role = str(message.get("role", "")).lower()
+        content = str(message.get("content", "")).strip()
+        if role != "user" or not content:
+            continue
+        user_turns_scanned += 1
+        if user_turns_scanned > 6:
+            break
+        if not is_context_dependent(content):
+            # This question had a concrete topic — it is the anchor
+            return _compact(content, 200)
+    return None
+
+
 def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
     """Build the text that will be embedded for retrieval.
 
     The result is still just a search query, not evidence.  Retrieved documents
     remain the only allowed grounding source for the final answer.
 
-    We look back up to *_MAX_HISTORY_TURNS* user questions so that multi-topic
-    conversations can resolve references correctly.  For example:
+    Strategy — anchor-based query construction:
 
-        Turn 1: User asks about leave policy  → assistant answers
-        Turn 2: User asks about IT policy     → assistant answers
-        Turn 3: User: "what about carry-forward?"  ← refers to Turn 1
+    When the current question is a vague follow-up ("tell me more", "tell me
+    again", "more detailed"), we find the last *concrete* user question in
+    history (the "anchor topic") and build the retrieval query as:
 
-    IMPORTANT: We intentionally use ONLY the user's prior questions (not the
-    assistant's answers) when building the retrieval query.  Assistant answers
-    are topically broad and diverse — including them injects many unrelated
-    keywords into the retrieval embedding, which causes retrieval drift
-    (a "tell me more" about sales starts retrieving HR policies because
-    the previous assistant turn mentioned both).
+        {anchor topic} — {vague follow-up}
 
-    Example Output for Turn 3:
-        Current question: what about carry-forward?
-        Most recent — User: [Turn 2 user question]
-        Earlier (2 turns ago) — User: [Turn 1 user question]
+    Example:
+        History:  User: "what do you know about sales"
+        Current:  "Tell me again"
+        Query:    "what do you know about sales — Tell me again"
+
+    This keeps the retrieval embedding tightly focused on the original topic
+    rather than drifting because "tell me again" has no meaningful signal.
+
+    For multi-hop follow-ups (e.g. "tell me more" → "tell me again"),
+    the anchor stays fixed on the last non-follow-up question, preventing
+    compounding drift.
+
+    IMPORTANT: We intentionally use ONLY user question text (not assistant
+    answers) when building the retrieval query.  Assistant answers are
+    topically broad — including them injects diverse unrelated keywords
+    into the retrieval embedding, causing retrieval drift.
     """
     if not history or not is_context_dependent(question):
         return question
 
-    # Collect up to _MAX_HISTORY_TURNS most-recent user questions from history.
-    # User questions are short and topically precise — ideal for retrieval.
+    anchor = _find_anchor_question(history)
+
+    if anchor:
+        # Build a focused, topic-anchored query.
+        # The anchor provides the domain keywords; the current question
+        # signals what aspect the user wants (more detail, specific field, etc.)
+        expanded_query = f"{anchor} — {question}"
+        log.info(
+            "query_anchored_to_topic",
+            extra={
+                "original_question": question,
+                "anchor": anchor,
+                "expanded_query": expanded_query,
+            },
+        )
+        return expanded_query
+
+    # Fallback: no anchor found (e.g. very first question was already a follow-up).
+    # Collect up to 3 prior user questions as context.
     _MAX_HISTORY_TURNS = 3
-    _USER_COMPACT_LIMIT = 150  # chars per user message (user questions are short anyway)
+    _USER_COMPACT_LIMIT = 150
 
     prior_user_questions: list[str] = []
-
     for message in reversed(history):
         role = str(message.get("role", "")).lower()
         content = str(message.get("content", "")).strip()
         if not content:
             continue
-
         if role == "user":
             prior_user_questions.append(_compact(content, _USER_COMPACT_LIMIT))
             if len(prior_user_questions) >= _MAX_HISTORY_TURNS:
@@ -157,6 +205,6 @@ def build_retrieval_query(question: str, history: list[dict[str, str]]) -> str:
             "original_question": question,
             "expanded_length": len(expanded_query),
             "turns_used": len(prior_user_questions),
-        }
+        },
     )
     return expanded_query

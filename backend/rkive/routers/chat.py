@@ -238,22 +238,23 @@ async def _stream_chat(payload: dict[str, Any]) -> AsyncGenerator[str, None]:
         context_blocks.append("\n".join(block_lines))
 
     # ── Token budget management ──────────────────────────────────────────────
-    # llama3.1 has an 8 192-token context window.  We estimate tokens as
-    # chars / 4 (standard heuristic for English text) and enforce budgets so
-    # the system prompt rules are never silently truncated by the model.
+    # gemma4:31b:cloud has a 128K-token context window.  We use a conservative
+    # 32K working budget so output tokens are never squeezed.
+    # We estimate tokens as chars / 4 (standard heuristic for English prose;
+    # gemma4 SentencePiece averages ~3.5–4 chars/token).
     #
     # Budget allocation (tokens):
-    #   System prompt static text  ~  400
-    #   Context blocks             ~ 2 500   ← trimmed below if needed
-    #   Conversation history       ~ 1 200   ← oldest messages dropped first
-    #   Current question           ~   200
-    #   Output buffer              ~ 1 500
-    #   Safety headroom            ~  392
-    #   ─────────────────────────────────
-    #   Total                      ~ 8 192
+    #   System prompt static text  ~    500
+    #   Context blocks             ~ 10 000   ← trimmed below if needed
+    #   Conversation history       ~  4 000   ← oldest messages dropped first
+    #   Current question           ~    500
+    #   Output buffer              ~ 16 000   ← generous for long answers
+    #   Safety headroom            ~  1 192
+    #   ─────────────────────────────────────
+    #   Total                      ~ 32 192   (out of 128K available)
     _CHARS_PER_TOKEN = 4
-    _CONTEXT_CHAR_BUDGET = 2500 * _CHARS_PER_TOKEN   # 10 000 chars
-    _HISTORY_CHAR_BUDGET = 1200 * _CHARS_PER_TOKEN   # 4  800 chars
+    _CONTEXT_CHAR_BUDGET = 10_000 * _CHARS_PER_TOKEN   # 40 000 chars
+    _HISTORY_CHAR_BUDGET = 4_000 * _CHARS_PER_TOKEN    # 16 000 chars
 
     def _trim_to_token_budget(blocks: list[str], budget_chars: int) -> str:
         """Join blocks until the char budget is exhausted; drop remaining."""
